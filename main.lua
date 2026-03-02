@@ -206,6 +206,11 @@ local function getNearestLocation(pos)
     return "Unknown Location"
 end
 
+-- =============================================
+--          UPDATED EMBED FUNCTIONS
+--    (role mention moved to content)
+-- =============================================
+
 local function sendDiscordEmbed(webhookUrl, storeName, status, jobId)
     local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
@@ -221,7 +226,7 @@ local function sendDiscordEmbed(webhookUrl, storeName, status, jobId)
 
     -- Get role mention
     local roleId = getgenv().WebhookConfig.Roles[storeName]
-    local roleMention = roleId and ("<@&" .. roleId .. ">") or "None"
+    local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
 
     local embedPayload = {
         embeds = {
@@ -234,13 +239,18 @@ local function sendDiscordEmbed(webhookUrl, storeName, status, jobId)
                     { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
                     { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
                     { name = "🚔 Police",       value = tostring(police),    inline = true  },
-                    { name = "📢 Role",         value = roleMention,         inline = false },
                 },
                 footer = { text = "Server ID: " .. jobId },
                 timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
             }
         }
     }
+
+    -- Add content if role mention exists
+    if roleMention then
+        embedPayload.content = roleMention
+    end
+
     local ok, encoded = pcall(function()
         return game:GetService("HttpService"):JSONEncode(embedPayload)
     end)
@@ -264,7 +274,7 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId)
                     colorDef.label:match("🟤") and "BrownAirdrop" or
                     colorDef.label:match("🔵") and "BlueAirdrop" or nil
     local roleId = roleKey and getgenv().WebhookConfig.Roles[roleKey]
-    local roleMention = roleId and ("<@&" .. roleId .. ">") or "None"
+    local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
 
     local embedPayload = {
         embeds = {
@@ -278,13 +288,17 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId)
                     { name = "🔗 Join Server",           value = "[Click to Join](" .. joinLink .. ")", inline = false },
                     { name = "🦹 Criminals",             value = tostring(crimAndPris), inline = false },
                     { name = "🚔 Police",                value = tostring(police), inline = true  },
-                    { name = "📢 Role",                   value = roleMention,      inline = false },
                 },
                 footer = { text = "Server ID: " .. jobId },
                 timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
             }
         }
     }
+
+    if roleMention then
+        embedPayload.content = roleMention
+    end
+
     local ok, encoded = pcall(function()
         return game:GetService("HttpService"):JSONEncode(embedPayload)
     end)
@@ -571,7 +585,7 @@ local function checkForOpenStores(player)
 
                         -- Get role mention for mansion
                         local roleId = getgenv().WebhookConfig.Roles["Mansion"]
-                        local roleMention = roleId and ("<@&" .. roleId .. ">") or "None"
+                        local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
 
                         local joinLink = getJoinLink(jobId)
                         local teamCounts = getTeamCounts()
@@ -593,13 +607,17 @@ local function checkForOpenStores(player)
                                         { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
                                         { name = "🏃 Criminals",    value = tostring(crimAndPris),        inline = true },
                                         { name = "🚔 Police",       value = tostring(police),             inline = true },
-                                        { name = "📢 Role",         value = roleMention,                  inline = false },
                                     },
                                     footer = { text = "Server ID: " .. jobId },
                                     timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
                                 }
                             }
                         }
+
+                        if roleMention then
+                            embedPayload.content = roleMention
+                        end
+
                         local ok, encoded = pcall(function()
                             return game:GetService("HttpService"):JSONEncode(embedPayload)
                         end)
