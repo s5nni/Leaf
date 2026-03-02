@@ -1,18 +1,30 @@
-local Webhooks = {
-    Jewelry_Store = "aaa",
-    Power_Plant   = "aaa",
-    Crown_Jewel   = "aaa",
-    Cargo_Plane   = "aaa",
-    Museum        = "aaa",
-    Rising_Bank   = "aaa",
-    Crater_Bank   = "aaa",
-    Tomb          = "aaa",
-    Oil_Rig       = "aaa",
-    Train         = "aaa",
-    Airdrop       = "aaa",
-    Mansion       = "aaa",
-
-    Log = "aaa"
+getgenv().WebhookConfig = {
+    Webhooks = {
+        Jewelry_Store = "https://ptb.discord.com/api/webhooks/1477993251548954645/fmkeJMsybI4f3khkSBW-GJuoUVcNWEla9-zqBwjy6-Chyy9Ys0FCTtwRLEgznEFM0EAK",
+        Power_Plant = "https://ptb.discord.com/api/webhooks/1477993951322439804/o9Er-McZr3Z9g6tvgtbkazpzRGTYObhK35ZQIy2xrKU4UkVgBwGRaBmZvSznnWbQfQEk",
+        Crown_Jewel = "https://ptb.discord.com/api/webhooks/1477994061402079313/O0EDOW0H5pcnMDH_oyhkTqgGEWC4lQIqrcUXzRkhVaUrMrOO99AuHQ8vsupgadnmia_g",
+        Cargo_Plane = "https://ptb.discord.com/api/webhooks/1477994149394382849/6w3GLncgk61iSF28QAi94ngAeWKmoQHE0ZokvEfo6SPhyVhFO4rNGUZNTOay2B2t_DhD",
+        Museum = "https://ptb.discord.com/api/webhooks/1477994254474416162/yFdObZj3D07TibYAkuFj67u8GyEhLdR7kA_BTJVn-_R5-4w3eLCZVqoJ8XiqwQ1hwriB",
+        Rising_Bank = "https://ptb.discord.com/api/webhooks/1477994349441581067/tdmcu8FwyJ7SlajoIsGZ0TenAcqD20AQubJ-yQny-Q0qxz-F7uQ3ggRkeUwM-DAbNPOQ",
+        Crater_Bank = "https://ptb.discord.com/api/webhooks/1477994604178444309/Qp1FQ2fxQs3-o-zpMF5sqwm5MuD4Uw6BLyd0pX5oZQ4m5GJPcy-U8ZyUHbi8sfHtBAbq",
+        Tomb = "https://ptb.discord.com/api/webhooks/1477994714568589445/X_TXwAa-f875jPVZQmLFFsYEI4CWIbOUBaVklnCao-f5HMlHZQp_K6loML0xFeeMXe6k",
+        Oil_Rig = "https://ptb.discord.com/api/webhooks/1477994805375139871/U8f86hafnUFZPXc3XEKMdDYcuT-GvcWkfrZzU5isaIamr2oDqr6Zmt7Siw-Ek_4aGLVN",
+        Train = "https://ptb.discord.com/api/webhooks/1477994924103307357/0DqAB9sIh5_t9X51Y8NA30ed3ZRHlPNEKpfzPXwjrGC_ocLDiTI0niT137vOKjimVQv6",
+        Airdrop = "https://ptb.discord.com/api/webhooks/1477995014058545162/msBv-JZzWCEULY5pdLtPmS7CW8UwMkgWVvOAVnx6vtvvErKHmkNzYtXGdL1eiqgsv_LP",
+        Mansion = "https://ptb.discord.com/api/webhooks/1477999309730349177/ddmLYjZue-02Q-30ENz-IIg2a7ZqKwn9DrDy-Gi5KFe2gGagO1XKq62QWU7AcByHc0HM",
+        Log = "",
+    },
+    Icons = {
+        Jewelry_Store = "rbxassetid://118335970965314",
+        Power_Plant    = "rbxassetid://105699516772445",
+        Crown_Jewel    = "rbxassetid://90511395098994",
+        Cargo_Plane    = "rbxassetid://123283496361865",
+        Museum         = "rbxassetid://77293148186745",
+        Rising_Bank    = "rbxassetid://136495546278020",
+        Crater_Bank    = "rbxassetid://73192489940892",
+        Tomb           = "rbxassetid://75075993183300",
+        Oil_Rig        = "rbxassetid://93493475540803",
+        Train          = "rbxassetid://76283666439593",
+        Mansion        = "rbxassetid://89104385607146",
+    }
 }
-
-return Webhooks
