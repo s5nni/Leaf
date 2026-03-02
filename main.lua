@@ -1,24 +1,19 @@
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/webhook.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/whitelist.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/robberies.lua"))()
-
 if not getgenv().VisitedServers then
     getgenv().VisitedServers = {}
 end
-
 if getgenv().WhitelistCheck and not getgenv().WhitelistCheck() then
     warn("You are not whitelisted to use this script.")
     return
 end
-
 local AIRDROP_LOCATION_RADIUS = 500
-
 local AIRDROP_COLORS = {
     { r = 147, g = 44,  b = 53,  label = "🔴 Red",   embedColor = 15158332 },
     { r = 148, g = 96,  b = 69,  label = "🟤 Brown",  embedColor = 10180422 },
     { r = 49,  g = 98,  b = 149, label = "🔵 Blue",   embedColor = 3447003  },
 }
-
 local AIRDROP_LOCATIONS = {
     {
         name = "Dunes",
@@ -50,9 +45,7 @@ local AIRDROP_LOCATIONS = {
         end
     },
 }
-
-local MAX_PLAYERS = 7
-
+local MAX_PLAYERS = 5
 local LogLevel = {
     INFO    = { label = "ℹ️ Info",       color = 5793266  },
     SUCCESS = { label = "✅ Success",    color = 3066993  },
@@ -60,11 +53,6 @@ local LogLevel = {
     ERROR   = { label = "❌ Error",      color = 15158332 },
     HOP     = { label = "🔀 Server Hop", color = 10181046 },
 }
-
--- =============================================
---           JOIN LINK BUILDER
--- =============================================
-
 local _cachedJoinLink = nil
 local function getJoinLink(jobId)
     local placeId = game.PlaceId
@@ -78,30 +66,21 @@ local function getJoinLink(jobId)
     end
     return _cachedJoinLink .. "?serverJobId=" .. jobId
 end
-
--- =============================================
---              LOGGING SYSTEM
--- =============================================
-
 local function sendLog(level, title, description, fields)
     local webhook = getgenv().WebhookConfig.Webhooks.Log
     if not webhook or webhook == "" then return end
-
     local player = game:GetService("Players").LocalPlayer
     local username = player and player.Name or "Unknown"
     local jobId = game.JobId or "N/A"
-
     local embedFields = {
         { name = "👤 Account",   value = username, inline = true },
         { name = "🌐 Server ID", value = jobId,    inline = true },
     }
-
     if fields then
         for _, f in ipairs(fields) do
             table.insert(embedFields, f)
         end
     end
-
     local embedPayload = {
         embeds = {
             {
@@ -114,19 +93,14 @@ local function sendLog(level, title, description, fields)
             }
         }
     }
-
     local ok, encoded = pcall(function()
         return game:GetService("HttpService"):JSONEncode(embedPayload)
     end)
     if not ok then return end
-
     pcall(function()
         request({ Url = webhook, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded })
     end)
 end
-
--- =============================================
-
 local function waitForLoad()
     local Players = game:GetService("Players")
     local player = Players.LocalPlayer
@@ -141,11 +115,9 @@ local function waitForLoad()
     task.wait(2)
     return player
 end
-
 local function formatName(name)
     return name:gsub("_", " ")
 end
-
 local function getTeamCounts()
     local counts = { Criminal = 0, Police = 0, Prisoner = 0 }
     for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
@@ -158,11 +130,9 @@ local function getTeamCounts()
     end
     return counts
 end
-
 local function colorDistance(r1, g1, b1, r2, g2, b2)
     return math.sqrt((r1 - r2)^2 + (g1 - g2)^2 + (b1 - b2)^2)
 end
-
 local function matchAirdropColor(r, g, b)
     local best = nil
     local bestDist = math.huge
@@ -176,7 +146,6 @@ local function matchAirdropColor(r, g, b)
     if bestDist <= 20 then return best end
     return nil
 end
-
 local function getDropPosition(drop)
     local ok, cf = pcall(function() return drop:GetModelCFrame() end)
     if ok and cf then return cf.Position end
@@ -184,7 +153,6 @@ local function getDropPosition(drop)
     if part then return part.Position end
     return nil
 end
-
 local function getNearestLocation(pos)
     local best = nil
     local bestDist = math.huge
@@ -203,7 +171,6 @@ local function getNearestLocation(pos)
     end
     return "Unknown Location"
 end
-
 local function sendDiscordEmbed(webhookUrl, storeName, status, jobId)
     local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
@@ -241,7 +208,6 @@ local function sendDiscordEmbed(webhookUrl, storeName, status, jobId)
         request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded })
     end)
 end
-
 local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId)
     local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
@@ -260,7 +226,7 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId)
                     { name = "📍 Location",              value = locationName,     inline = true  },
                     { name = "👥 Total Players",         value = tostring(totalPlayers), inline = true },
                     { name = "🔗 Join Server",           value = "[Click to Join](" .. joinLink .. ")", inline = false },
-                    { name = "🦹 Criminals", value = tostring(crimAndPris), inline = false },
+                    { name = "🦹 Criminals",             value = tostring(crimAndPris), inline = false },
                     { name = "🚔 Police",                value = tostring(police), inline = true  },
                 },
                 footer = { text = "Server ID: " .. jobId },
@@ -276,27 +242,20 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId)
         request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded })
     end)
 end
-
 local function checkAirdrops(jobId)
     local webhook = getgenv().WebhookConfig.Webhooks.Airdrop
     if not webhook or webhook == "" then
         sendLog(LogLevel.WARNING, "Airdrop Webhook Missing", "Airdrop webhook URL has not been configured.")
         return
     end
-
-    -- Respect toggle
     if getgenv().RobberyToggles and not getgenv().RobberyToggles.Airdrop then
-        sendLog(LogLevel.INFO, "Airdrop — Toggled Off", "Airdrop logging is disabled via robberies.lua.")
         return
     end
-
     local dropsFound = 0
     local dropsLogged = 0
-
     for _, drop in ipairs(workspace:GetChildren()) do
         if drop.Name == "Drop" and drop:IsA("Model") then
             dropsFound = dropsFound + 1
-
             local walls = drop:FindFirstChild("Walls")
             if not walls then
                 sendLog(LogLevel.WARNING, "Airdrop — No Walls", "A Drop model has no 'Walls' child.", {
@@ -304,7 +263,6 @@ local function checkAirdrops(jobId)
                 })
                 continue
             end
-
             local wall = walls:FindFirstChild("Wall")
             if not wall or not wall:IsA("BasePart") then
                 sendLog(LogLevel.WARNING, "Airdrop — No Wall Part", "Walls folder has no valid 'Wall' BasePart.", {
@@ -312,12 +270,10 @@ local function checkAirdrops(jobId)
                 })
                 continue
             end
-
             local col = wall.Color
             local r = math.round(col.R * 255)
             local g = math.round(col.G * 255)
             local b = math.round(col.B * 255)
-
             local colorDef = matchAirdropColor(r, g, b)
             if not colorDef then
                 sendLog(LogLevel.WARNING, "Airdrop — Unknown Color", "Could not match drop color to any known type.", {
@@ -326,7 +282,6 @@ local function checkAirdrops(jobId)
                 })
                 continue
             end
-
             local dropPos = getDropPosition(drop)
             if not dropPos then
                 sendLog(LogLevel.WARNING, "Airdrop — No Position", "Could not determine drop world position.", {
@@ -334,19 +289,15 @@ local function checkAirdrops(jobId)
                 })
                 continue
             end
-
             local locationName = getNearestLocation(dropPos)
-
             sendAirdropEmbed(webhook, drop, colorDef, locationName, jobId)
             dropsLogged = dropsLogged + 1
-
             sendLog(LogLevel.SUCCESS, "Airdrop Logged", "Successfully logged an airdrop.", {
                 { name = "🎨 Type",     value = colorDef.label, inline = true },
                 { name = "📍 Location", value = locationName,   inline = true },
             })
         end
     end
-
     if dropsFound == 0 then
         sendLog(LogLevel.INFO, "Airdrop Scan Complete", "No active Drop models found in workspace.")
     else
@@ -356,33 +307,27 @@ local function checkAirdrops(jobId)
         })
     end
 end
-
 local function checkForOpenStores(player)
     local playerGui = player and player:FindFirstChild("PlayerGui")
     if not playerGui then
         sendLog(LogLevel.ERROR, "Store Scan Failed", "PlayerGui not found on player.")
         return
     end
-
     local worldMarkers = playerGui:FindFirstChild("WorldMarkersGui")
     if not worldMarkers then
         sendLog(LogLevel.ERROR, "Store Scan Failed", "WorldMarkersGui not found in PlayerGui.")
         return
     end
-
     local jobId = game.JobId
     local openCount = 0
     local robberyCount = 0
     local closedCount = 0
     local missedCount = 0
     local skippedCount = 0
-
     sendLog(LogLevel.INFO, "Store Scan Started", "Beginning robbery/store status scan.")
-
     for storeName, iconAssetId in pairs(getgenv().WebhookConfig.Icons) do
         local displayName = formatName(storeName)
         local found = false
-
         for _, imageLabel in ipairs(worldMarkers:GetDescendants()) do
             if imageLabel:IsA("ImageLabel") and imageLabel.Image == iconAssetId then
                 found = true
@@ -393,7 +338,6 @@ local function checkForOpenStores(player)
                     local g = math.round(col.G * 255)
                     local b = math.round(col.B * 255)
                     local webhook = getgenv().WebhookConfig.Webhooks[storeName]
-
                     if r == 0 and g == 255 and b == 0 then
                         openCount = openCount + 1
                         if webhook and webhook ~= "" then
@@ -444,7 +388,6 @@ local function checkForOpenStores(player)
                 break
             end
         end
-
         if not found then
             missedCount = missedCount + 1
             sendLog(LogLevel.WARNING, "Store Icon Missing", "Could not find icon in WorldMarkersGui for " .. displayName .. ".", {
@@ -452,7 +395,6 @@ local function checkForOpenStores(player)
             })
         end
     end
-
     sendLog(LogLevel.INFO, "Store Scan Complete", "Finished scanning all stores.", {
         { name = "✅ Open",    value = tostring(openCount),    inline = true },
         { name = "🔴 Robbery", value = tostring(robberyCount), inline = true },
@@ -461,12 +403,10 @@ local function checkForOpenStores(player)
         { name = "⏭️ Skipped", value = tostring(skippedCount), inline = true },
     })
 end
-
 local function getTargetServer(placeId, currentJobId)
     local allServers = {}
     local cursor = nil
     local visited = getgenv().VisitedServers
-
     repeat
         local ok, result = pcall(function()
             return game:GetService("HttpService"):JSONDecode(
@@ -494,13 +434,11 @@ local function getTargetServer(placeId, currentJobId)
         if #allServers > 0 then break end
         cursor = result.nextPageCursor
     until not cursor
-
     if #allServers == 0 then
         sendLog(LogLevel.WARNING, "No Valid Servers", "No servers found under player limit. Clearing visited list and retrying.")
         getgenv().VisitedServers = {}
         return nil
     end
-
     table.sort(allServers, function(a, b) return (a.playing or 0) < (b.playing or 0) end)
     local best = allServers[1]
     sendLog(LogLevel.HOP, "Target Server Found", "Identified best server to hop to.", {
@@ -509,18 +447,14 @@ local function getTargetServer(placeId, currentJobId)
     })
     return best.id
 end
-
 local function hopToNewServer(player)
     local placeId = game.PlaceId
     local currentJobId = game.JobId
     getgenv().VisitedServers[currentJobId] = true
-
     local targetJobId = getTargetServer(placeId, currentJobId)
     local TeleportService = game:GetService("TeleportService")
-
     pcall(function() clear_teleport_queue() end)
     pcall(function() queue_on_teleport(getgenv()._ServerHopSource) end)
-
     if targetJobId then
         sendLog(LogLevel.HOP, "Teleporting", "Attempting teleport to target server.", {
             { name = "Target", value = targetJobId, inline = false }
@@ -539,22 +473,15 @@ local function hopToNewServer(player)
         pcall(function() TeleportService:Teleport(placeId, player) end)
     end
 end
-
 if not getgenv()._ServerHopSource then
-    getgenv()._ServerHopSource = [[loadstring(game:HttpGet("raw code here"))()]] -- replace with your hop script if needed
+    getgenv()._ServerHopSource = [[loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/main.lua"))()]]
 end
-
--- =============================================
---              MAIN EXECUTION
--- =============================================
 pcall(function()
     local player = waitForLoad()
     local currentJobId = game.JobId
-
     sendLog(LogLevel.INFO, "Bot Started", "Script loaded and game is ready.", {
         { name = "Server ID", value = currentJobId, inline = false }
     })
-
     if getgenv().ServerId == currentJobId then
         sendLog(LogLevel.WARNING, "Duplicate Server Detected", "Current server matches stored ServerId. Skipping scan and hopping immediately.", {
             { name = "Server ID", value = currentJobId, inline = false }
@@ -562,15 +489,11 @@ pcall(function()
         hopToNewServer(player)
         return
     end
-
     getgenv().ServerId = currentJobId
-
     checkForOpenStores(player)
     checkAirdrops(currentJobId)
-
     getgenv().IsFinished = true
     sendLog(LogLevel.SUCCESS, "Cycle Complete", "All scans finished. IsFinished set. Hopping in 2 seconds.")
     task.wait(2)
-
     hopToNewServer(player)
 end)
