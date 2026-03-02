@@ -1,4 +1,3 @@
--- webhook.lua
 getgenv().WebhookConfig = {
     Webhooks = {
         Jewelry_Store = "https://ptb.discord.com/api/webhooks/1477993251548954645/fmkeJMsybI4f3khkSBW-GJuoUVcNWEla9-zqBwjy6-Chyy9Ys0FCTtwRLEgznEFM0EAK",
@@ -13,7 +12,7 @@ getgenv().WebhookConfig = {
         Train = "https://ptb.discord.com/api/webhooks/1477994924103307357/0DqAB9sIh5_t9X51Y8NA30ed3ZRHlPNEKpfzPXwjrGC_ocLDiTI0niT137vOKjimVQv6",
         Airdrop = "https://ptb.discord.com/api/webhooks/1477995014058545162/msBv-JZzWCEULY5pdLtPmS7CW8UwMkgWVvOAVnx6vtvvErKHmkNzYtXGdL1eiqgsv_LP",
         Mansion = "https://ptb.discord.com/api/webhooks/1477999309730349177/ddmLYjZue-02Q-30ENz-IIg2a7ZqKwn9DrDy-Gi5KFe2gGagO1XKq62QWU7AcByHc0HM",
-        Log = "https://ptb.discord.com/api/webhooks/1478020532585889792/WamEKrBWrx1KM1RbxyciPeFdnRwmLpcTYo8Oy7JkG9CKuUT8yJeii6TmuPDkB5Q2oCyT",
+        Log = "",
     },
     Icons = {
         Jewelry_Store = "rbxassetid://118335970965314",
@@ -31,7 +30,7 @@ getgenv().WebhookConfig = {
     Roles = {
         Jewelry_Store = "1478029858662645942",
         Power_Plant   = "1478029909380300901",
-        Crown_Jewel   = "1478029937490530477",
+        Crown_Jewel   = "1478029931447382036",
         Cargo_Plane   = "1478030007824547891",
         Museum        = "1478030047104467066",
         Rising_Bank   = "1478030076661596293",
@@ -43,5 +42,21 @@ getgenv().WebhookConfig = {
         RedAirdrop    = "1478030297915457639",
         BrownAirdrop  = "1478030236724756644",
         BlueAirdrop   = "1478030276906061874",
+    },
+    Images = {
+        Jewelry_Store = "https://cdn.discordapp.com/attachments/968257025345724497/1478102176546160640/Jewelry_Store_1.png?ex=69a72d6c&is=69a5dbec&hm=5841fe6250247ccf05ced894968e7ddbb50c09df4c935ddd1ea01e711f6a4b11&",
+        Power_Plant   = "https://cdn.discordapp.com/attachments/968257025345724497/1478102176202096833/Power_Plant_1.png?ex=69a72d6c&is=69a5dbec&hm=7ee719d2d66c11bea24db9291939647b279e6a5f790b8ac8c38a652baad38a75&",
+        Crown_Jewel   = "https://cdn.discordapp.com/attachments/968257025345724497/1478102175577014413/CASINO_1.png?ex=69a72d6c&is=69a5dbec&hm=ab6c5ef6bb7cefb981338b9f96faefe8d3516b9cb7f0eed9b77852b5f86fece4&",
+        Cargo_Plane   = "https://cdn.discordapp.com/attachments/968257025345724497/1478102175233347645/Cargo_Plane_1.png?ex=69a72d6c&is=69a5dbec&hm=b1b69f732d7a33e0422b8024a20269308a69e607d4b2968fb10a029f7e2dbb70&",
+        Museum        = "https://cdn.discordapp.com/attachments/968257025345724497/1478102174864117800/Museum_1.png?ex=69a72d6c&is=69a5dbec&hm=5e7e5368b4c1aa91a9a7a414bc6301171faac4814e825e29b90dd2cd7d45f2c7&",
+        Rising_Bank   = "https://cdn.discordapp.com/attachments/968257025345724497/1478102174440620072/Rising_City_Bank_1.png?ex=69a72d6c&is=69a5dbec&hm=0121cade479f9da132bc45efdc3124c67ed12d6beaff9daa7154c018d0d9201a&",
+        Crater_Bank   = "https://cdn.discordapp.com/attachments/968257025345724497/1478102174121590795/Crater_Bank_1.png?ex=69a72d6c&is=69a5dbec&hm=360fba45c11334cde8686cd2e2ecae1c794a129582a41571d3e3924b40bac4b8&",
+        Tomb          = "https://cdn.discordapp.com/attachments/968257025345724497/1478102173849092297/Tomb_1.png?ex=69a72d6c&is=69a5dbec&hm=0cb3a69a2a34c642b9885e1ee3c0a5bb7aaf20b8bab5cf77fa36da4806442f1e&",
+        Oil_Rig       = "https://cdn.discordapp.com/attachments/968257025345724497/1478102173568077855/Oil_Rig_1.png?ex=69a72d6b&is=69a5dbeb&hm=05fbe8873e269f010697c4fc0e73c969c3575ba269ce85ad352f9e554d5d6aa6&",
+        Train         = "https://cdn.discordapp.com/attachments/968257025345724497/1478102172670492856/Cargo_Train_1.png?ex=69a72d6b&is=69a5dbeb&hm=5b92a63a774a3ceb0ef4a52e95ccba411f7b498bf26c365ecc57adf0bf103d3a&",
+        Mansion       = "https://cdn.discordapp.com/attachments/968257025345724497/1478102813333786695/Mansion_2.png?ex=69a72e04&is=69a5dc84&hm=657737da9225d00e602b59fe2ba4626443f2dbcc2ddee1a2ea335d071a8fa002&",
+        RedAirdrop    = "https://example.com/redairdrop.png",
+        BrownAirdrop  = "https://example.com/brownairdrop.png",
+        BlueAirdrop   = "https://example.com/blueairdrop.png",
     }
 }
