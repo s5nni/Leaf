@@ -6,6 +6,11 @@ if not getgenv().VisitedServers then
     getgenv().VisitedServers = {}
 end
 
+-- Cache for server regions
+if not getgenv().ServerRegionCache then
+    getgenv().ServerRegionCache = {}
+end
+
 if getgenv().WhitelistCheck and not getgenv().WhitelistCheck() then
     warn("You are not whitelisted to use this script.")
     return
@@ -207,8 +212,7 @@ local function getNearestLocation(pos)
 end
 
 -- =============================================
---          UPDATED EMBED FUNCTIONS
---    (role mention moved to content)
+--          DISCORD EMBED FUNCTIONS
 -- =============================================
 
 local function sendDiscordEmbed(webhookUrl, storeName, status, jobId)
@@ -246,7 +250,6 @@ local function sendDiscordEmbed(webhookUrl, storeName, status, jobId)
         }
     }
 
-    -- Add content if role mention exists
     if roleMention then
         embedPayload.content = roleMention
     end
@@ -341,7 +344,80 @@ local function parseGameTime(timeStr)
 end
 
 -- =============================================
---          IMPROVED AIRDROP DETECTION
+--          REGION FILTERING FUNCTIONS
+-- =============================================
+
+-- Get the IP address of a server
+local function getServerIP(placeId, serverId)
+    local success, response = pcall(function()
+        return request({
+            Url = "https://gamejoin.roblox.com/v1/join-game-instance",
+            Method = "POST",
+            Headers = {
+                ["Content-Type"] = "application/json",
+                ["User-Agent"] = "Roblox/WinInet"
+            },
+            Body = game:GetService("HttpService"):JSONEncode({
+                placeId = placeId,
+                gameId = serverId,
+                isTeleport = false,
+                gameJoinAttemptId = serverId
+            })
+        })
+    end)
+    if not success then return nil end
+    if response.StatusCode ~= 200 then return nil end
+    local ok, data = pcall(function()
+        return game:GetService("HttpService"):JSONDecode(response.Body)
+    end)
+    if not ok then return nil end
+    -- The IP can be in MachineAddress or UdmuxEndpoints
+    if data.joinScript and data.joinScript.MachineAddress then
+        return data.joinScript.MachineAddress
+    end
+    if data.joinScript and data.joinScript.UdmuxEndpoints and #data.joinScript.UdmuxEndpoints > 0 then
+        return data.joinScript.UdmuxEndpoints[1].Address
+    end
+    return nil
+end
+
+-- Simplified check for USA IP ranges (common Roblox USA prefixes)
+local function isUSAServer(ipAddress)
+    local usaPrefixes = {
+        "104.",   -- Common Roblox USA IP prefix
+        "128.116.",
+        "162.",
+        "199.",
+        "66.",
+        "72.",
+        "192.",
+    }
+    for _, prefix in ipairs(usaPrefixes) do
+        if ipAddress:sub(1, #prefix) == prefix then
+            return true
+        end
+    end
+    return false
+end
+
+-- Get region for a server (cached)
+local function getServerRegion(placeId, serverId)
+    local cache = getgenv().ServerRegionCache
+    if cache[serverId] then
+        return cache[serverId]
+    end
+    local ip = getServerIP(placeId, serverId)
+    if not ip then
+        cache[serverId] = "unknown"
+        return "unknown"
+    end
+    local region = isUSAServer(ip) and "US" or "other"
+    cache[serverId] = region
+    return region
+end
+
+-- =============================================
+--          AIRDROP SCAN (IMPROVED)
 -- =============================================
 
 local function checkAirdrops(jobId)
@@ -699,7 +775,7 @@ local function checkForOpenStores(player)
 end
 
 -- =============================================
---          SERVER HOP LOGIC
+--          SERVER HOP LOGIC (WITH REGION FILTER)
 -- =============================================
 
 local function getTargetServer(placeId, currentJobId)
@@ -741,8 +817,29 @@ local function getTargetServer(placeId, currentJobId)
         return nil
     end
 
+    -- Sort by player count ascending (lowest first)
     table.sort(allServers, function(a, b) return (a.playing or 0) < (b.playing or 0) end)
-    local best = allServers[1]
+
+    -- Filter out USA servers by checking region
+    local nonUSAServers = {}
+    for _, server in ipairs(allServers) do
+        local region = getServerRegion(placeId, server.id)
+        if region == "US" then
+            sendLog(LogLevel.INFO, "Skipping USA Server", "Server " .. server.id .. " is in USA.")
+        else
+            table.insert(nonUSAServers, server)
+        end
+        -- Small delay to avoid hitting rate limits
+        task.wait(0.1)
+    end
+
+    if #nonUSAServers == 0 then
+        sendLog(LogLevel.WARNING, "No Non‑USA Servers", "All candidate servers are in USA. Falling back to any server.")
+        -- Fallback: use the original list (including USA)
+        nonUSAServers = allServers
+    end
+
+    local best = nonUSAServers[1]
     sendLog(LogLevel.HOP, "Target Server Found", "Identified best server to hop to.", {
         { name = "Target ID", value = best.id, inline = false },
         { name = "Players",   value = tostring(best.playing) .. "/" .. tostring(best.maxPlayers), inline = true },
