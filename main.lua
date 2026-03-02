@@ -66,21 +66,12 @@ local LogLevel = {
 }
 
 -- =============================================
---           JOIN LINK BUILDER
+--           JOIN LINK BUILDER (UPDATED)
 -- =============================================
-
-local _cachedJoinLink = nil
 local function getJoinLink(jobId)
     local placeId = game.PlaceId
-    if not _cachedJoinLink then
-        local ok, info = pcall(function()
-            return game:GetService("MarketplaceService"):GetProductInfo(placeId)
-        end)
-        local placeName = (ok and info and info.Name) and info.Name or "Game"
-        local slug = placeName:gsub("[^%w%s%-]", ""):gsub("%s+", "-")
-        _cachedJoinLink = "https://www.roblox.com/games/" .. placeId .. "/" .. slug
-    end
-    return _cachedJoinLink .. "?serverJobId=" .. jobId
+    local http = game:GetService("HttpService")
+    return "https://s5nni.github.io/Leaf-Joiner/?placeId=" .. placeId .. "&jobId=" .. http:UrlEncode(jobId)
 end
 
 -- =============================================
