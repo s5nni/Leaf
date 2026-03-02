@@ -858,7 +858,7 @@ local function checkForOpenStores(player)
                         }
 
                         if imageUrl then
-                            embed.thumbnail = { url = imageUrl }
+                            embed.image = { url = imageUrl }
                         end
 
                         local embedPayload = { embeds = { embed } }
