@@ -327,7 +327,7 @@ local function parseGameTime(timeStr)
 end
 
 -- =============================================
---          AIRDROP SCAN (IMPROVED)
+--          IMPROVED AIRDROP DETECTION
 -- =============================================
 
 local function checkAirdrops(jobId)
@@ -344,54 +344,81 @@ local function checkAirdrops(jobId)
     local dropsLogged = 0
     local candidates = {}
 
-    -- First pass: look for exact "Drop" models
+    -- Look for exact "Drop" models (as per user: they are named exactly "Drop")
     for _, drop in ipairs(workspace:GetChildren()) do
         if drop.Name == "Drop" and drop:IsA("Model") then
             table.insert(candidates, drop)
         end
     end
 
-    -- Second pass: if none found, look for any model with "drop" in name (case insensitive)
+    -- If none found, log a warning but also try a fallback (maybe the name changed)
     if #candidates == 0 then
-        for _, obj in ipairs(workspace:GetChildren()) do
-            if obj:IsA("Model") and obj.Name:lower():find("drop") then
-                table.insert(candidates, obj)
-            end
-        end
-        if #candidates > 0 then
-            sendLog(LogLevel.INFO, "Airdrop Scan", "Found " .. #candidates .. " possible drop models via fuzzy name match.")
-        end
+        sendLog(LogLevel.WARNING, "Airdrop Scan", "No models named 'Drop' found in workspace.")
     end
 
     for _, drop in ipairs(candidates) do
         dropsFound = dropsFound + 1
+        sendLog(LogLevel.INFO, "Airdrop Candidate", "Found drop model: " .. drop:GetFullName())
 
-        -- Try to find Walls/Wall
-        local walls = drop:FindFirstChild("Walls") or drop:FindFirstChild("walls") or drop:FindFirstChild("Wall") or drop:FindFirstChild("wall")
+        -- ---- IMPROVED WALL DETECTION ----
         local wallPart = nil
-        if walls then
-            if walls:IsA("BasePart") then
-                wallPart = walls
-            else
-                wallPart = walls:FindFirstChildWhichIsA("BasePart", true)
+
+        -- Strategy 1: Look for a folder named "Walls" (or "walls") and then any BasePart inside
+        local wallsFolder = drop:FindFirstChild("Walls") or drop:FindFirstChild("walls")
+        if wallsFolder then
+            wallPart = wallsFolder:FindFirstChildWhichIsA("BasePart", true)
+            if wallPart then
+                sendLog(LogLevel.INFO, "Wall Found", "Found wall part inside Walls folder: " .. wallPart.Name)
             end
         end
+
+        -- Strategy 2: If not found, look for a part named "Wall" (case‑insensitive) directly under drop
         if not wallPart then
-            -- If no dedicated wall, try to find any part with a color that might be the drop's color
-            for _, child in ipairs(drop:GetDescendants()) do
-                if child:IsA("BasePart") and child.Name:lower():find("wall") then
+            for _, child in ipairs(drop:GetChildren()) do
+                if child:IsA("BasePart") and child.Name:lower() == "wall" then
                     wallPart = child
+                    sendLog(LogLevel.INFO, "Wall Found", "Found direct wall part: " .. child.Name)
                     break
                 end
             end
         end
+
+        -- Strategy 3: If still not found, collect all BasePart descendants
         if not wallPart then
-            sendLog(LogLevel.WARNING, "Airdrop — No Wall Part", "Could not find any wall part in drop model.", {
-                { name = "Drop", value = drop:GetFullName(), inline = true }
-            })
+            local parts = {}
+            for _, desc in ipairs(drop:GetDescendants()) do
+                if desc:IsA("BasePart") then
+                    table.insert(parts, desc)
+                end
+            end
+            if #parts == 1 then
+                -- Only one part in the whole model – assume it's the wall
+                wallPart = parts[1]
+                sendLog(LogLevel.INFO, "Wall Found", "Only one BasePart in model, assuming it's the wall: " .. wallPart.Name)
+            elseif #parts > 1 then
+                -- Multiple parts – log their names for debugging, then skip this drop
+                local partNames = {}
+                for _, p in ipairs(parts) do
+                    table.insert(partNames, p.Name)
+                end
+                sendLog(LogLevel.WARNING, "Airdrop — Multiple Parts", "Drop has multiple BaseParts, cannot determine wall.", {
+                    { name = "Parts", value = table.concat(partNames, ", "), inline = false }
+                })
+                continue
+            else
+                -- No parts at all? Unlikely, but skip
+                sendLog(LogLevel.WARNING, "Airdrop — No BaseParts", "Drop model contains no BasePart descendants.")
+                continue
+            end
+        end
+
+        -- If we still have no wall part, skip
+        if not wallPart then
+            sendLog(LogLevel.WARNING, "Airdrop — No Wall Part", "Could not identify any wall part in drop model.")
             continue
         end
 
+        -- Now we have a wallPart – extract its color
         local col = wallPart.Color
         local r = math.round(col.R * 255)
         local g = math.round(col.G * 255)
