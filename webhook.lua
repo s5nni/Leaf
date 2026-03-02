@@ -15,7 +15,7 @@ getgenv().WebhookConfig = {
         Cargo_Train = "https://ptb.discord.com/api/webhooks/1477994924103307357/0DqAB9sIh5_t9X51Y8NA30ed3ZRHlPNEKpfzPXwjrGC_ocLDiTI0niT137vOKjimVQv6",
         Passenger_Train = "https://ptb.discord.com/api/webhooks/1478108728636084246/XTuiY2rqU4oD_Oq10i1qE004-QZVvHERggOzxu-Mbm9ZDYLF2BldrGiLUCwTDke8g0sD",
         Bank_Truck = "https://ptb.discord.com/api/webhooks/1478110368646823966/PKNixyALGJpCu5eVhQ-pgtuYuOvjvDKPFdhOvb2EL-GsUwFq3hy8wQkLwozk_Pf3p-sT",
-        Log = "https://ptb.discord.com/api/webhooks/1478168822568583178/_YxNh97dWQzR2cVF36kQk9Bi5IM1QEr9PKCf4y01gfTRzc704Cp0lwCFT1k3JjfC2sy1", --"https://ptb.discord.com/api/webhooks/1478020532585889792/WamEKrBWrx1KM1RbxyciPeFdnRwmLpcTYo8Oy7JkG9CKuUT8yJeii6TmuPDkB5Q2oCyT",
+        Log = "https://ptb.discord.com/api/webhooks/1478020532585889792/WamEKrBWrx1KM1RbxyciPeFdnRwmLpcTYo8Oy7JkG9CKuUT8yJeii6TmuPDkB5Q2oCyT",
     },
     Icons = {
         Jewelry_Store = "rbxassetid://118335970965314",
