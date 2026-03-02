@@ -1,5 +1,3 @@
--- whitelist.lua
-
 local Whitelist = {
     ["716FCC14-6490-418D-8A86-F95C17A8FC7B"] = true,
 }
