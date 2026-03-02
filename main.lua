@@ -66,7 +66,7 @@ local LogLevel = {
 }
 
 -- =============================================
---           JOIN LINK BUILDER (UPDATED)
+--           JOIN LINK BUILDER
 -- =============================================
 local function getJoinLink(jobId)
     local placeId = game.PlaceId
@@ -202,6 +202,23 @@ local function getNearestLocation(pos)
 end
 
 -- =============================================
+--          TELEPORT HELPER
+-- =============================================
+local function teleportTo(position)
+    local player = game:GetService("Players").LocalPlayer
+    if not player then return end
+    local character = player.Character
+    if not character then
+        player.CharacterAdded:Wait()
+        character = player.Character
+    end
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        hrp.CFrame = CFrame.new(position)
+    end
+end
+
+-- =============================================
 --          CROWN JEWEL CODE READER
 -- =============================================
 
@@ -304,7 +321,7 @@ local function getCrownJewelCode()
 end
 
 -- =============================================
---          DISCORD EMBED FUNCTIONS (with thumbnail)
+--          DISCORD EMBED FUNCTIONS (with updated titles)
 -- =============================================
 
 local function sendDiscordEmbed(webhookUrl, storeName, status, jobId)
@@ -319,7 +336,8 @@ local function sendDiscordEmbed(webhookUrl, storeName, status, jobId)
     local isOpen = status == "open"
     local color = isOpen and 3066993 or 15105570
     local statusText = isOpen and "Open" or "Under Robbery"
-    local title = isOpen and storeName .. " is Open!" or storeName .. " is Under Robbery!"
+    local displayName = formatName(storeName)
+    local title = displayName .. " is " .. string.lower(statusText) .. "."
 
     local roleId = getgenv().WebhookConfig.Roles[storeName]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
@@ -656,7 +674,7 @@ local function checkAirdrops(jobId)
 end
 
 -- =============================================
---          STORE SCAN (WITH MANSION & CROWN JEWEL)
+--          STORE SCAN (WITH MANSION & CROWN JEWEL & TELEPORT)
 -- =============================================
 
 local function checkForOpenStores(player)
@@ -709,6 +727,30 @@ local function checkForOpenStores(player)
                     end
 
                     -- =========================================
+                    --          TELEPORT FOR OPEN CROWN JEWEL / TOMB
+                    -- =========================================
+                    if isOpen then
+                        if storeName == "Crown_Jewel" then
+                            local casino = workspace:FindFirstChild("Casino")
+                            if casino then
+                                local pos = casino:GetModelCFrame().Position
+                                teleportTo(pos)
+                                sendLog(LogLevel.INFO, "Teleported to Casino", "Moved to render Crown Jewel area.")
+                            end
+                        elseif storeName == "Tomb" then
+                            local tomb = workspace:FindFirstChild("RobberyTomb")
+                            if tomb then
+                                local inner = tomb:FindFirstChild("Tomb")
+                                if inner then
+                                    local pos = inner:GetModelCFrame().Position
+                                    teleportTo(pos)
+                                    sendLog(LogLevel.INFO, "Teleported to Tomb", "Moved to render Tomb area.")
+                                end
+                            end
+                        end
+                    end
+
+                    -- =========================================
                     --          CROWN JEWEL (with code)
                     -- =========================================
                     if storeName == "Crown_Jewel" then
@@ -730,7 +772,7 @@ local function checkForOpenStores(player)
                         local crimAndPris = criminals + prisoners
                         local totalPlayers = crimAndPris + police
                         local statusText = isOpen and "Open" or "Under Robbery"
-                        local title = isOpen and "Crown Jewel is Open!" or "Crown Jewel is Under Robbery!"
+                        local title = displayName .. " is " .. string.lower(statusText) .. "."
 
                         local roleId = getgenv().WebhookConfig.Roles["Crown_Jewel"]
                         local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
@@ -806,7 +848,7 @@ local function checkForOpenStores(player)
                             timeStatus = "Open"
                             timeColor = 3066993
                         elseif hour >= 16 then
-                            timeStatus = "Ready to Open"
+                            timeStatus = "Opening Soon"
                             timeColor = 16753920
                         elseif hour == 0 then
                             timeStatus = "Closing Soon"
@@ -833,7 +875,7 @@ local function checkForOpenStores(player)
                         local imageUrl = getgenv().WebhookConfig.Images["Mansion"]
 
                         local embed = {
-                            title = "🏰 Mansion is Open (" .. timeStatus .. ")",
+                            title = "Mansion is " .. timeStatus .. ".",
                             color = timeColor,
                             fields = {
                                 { name = "⏰ Game Time",   value = timeText,                     inline = true },
@@ -864,7 +906,7 @@ local function checkForOpenStores(player)
                             pcall(function()
                                 request({ Url = webhook, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded })
                             end)
-                            sendLog(LogLevel.SUCCESS, "Mansion Logged", "Mansion Open at " .. timeText, {
+                            sendLog(LogLevel.SUCCESS, "Mansion Logged", "Mansion " .. timeStatus .. " at " .. timeText, {
                                 { name = "Time Status", value = timeStatus, inline = true }
                             })
                         end
