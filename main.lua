@@ -404,7 +404,7 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
     }
 
     if imageUrl then
-        embed.thumbnail = { url = imageUrl }
+        embed.image = { url = imageUrl }
     end
 
     local embedPayload = { embeds = { embed } }
