@@ -61,6 +61,10 @@ local LogLevel = {
     HOP     = { label = "🔀 Server Hop", color = 10181046 },
 }
 
+-- =============================================
+--           JOIN LINK BUILDER
+-- =============================================
+
 local _cachedJoinLink = nil
 local function getJoinLink(jobId)
     local placeId = game.PlaceId
@@ -74,6 +78,10 @@ local function getJoinLink(jobId)
     end
     return _cachedJoinLink .. "?serverJobId=" .. jobId
 end
+
+-- =============================================
+--              LOGGING SYSTEM
+-- =============================================
 
 local function sendLog(level, title, description, fields)
     local webhook = getgenv().WebhookConfig.Webhooks.Log
@@ -116,6 +124,8 @@ local function sendLog(level, title, description, fields)
         request({ Url = webhook, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded })
     end)
 end
+
+-- =============================================
 
 local function waitForLoad()
     local Players = game:GetService("Players")
@@ -163,11 +173,13 @@ local function matchAirdropColor(r, g, b)
             best = def
         end
     end
-    if bestDist <= 20 then return best end
+    if bestDist <= 30 then return best end
     return nil
 end
 
 local function getDropPosition(drop)
+    local ok, pivot = pcall(function() return drop:GetPivot() end)
+    if ok and pivot then return pivot.Position end
     local ok, cf = pcall(function() return drop:GetModelCFrame() end)
     if ok and cf then return cf.Position end
     local part = drop:FindFirstChildWhichIsA("BasePart", true)
@@ -206,6 +218,11 @@ local function sendDiscordEmbed(webhookUrl, storeName, status, jobId)
     local color = isOpen and 3066993 or 15105570
     local statusText = isOpen and "Open" or "Under Robbery"
     local title = isOpen and storeName .. " is Open!" or storeName .. " is Under Robbery!"
+
+    -- Get role mention
+    local roleId = getgenv().WebhookConfig.Roles[storeName]
+    local roleMention = roleId and ("<@&" .. roleId .. ">") or "None"
+
     local embedPayload = {
         embeds = {
             {
@@ -217,6 +234,7 @@ local function sendDiscordEmbed(webhookUrl, storeName, status, jobId)
                     { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
                     { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
                     { name = "🚔 Police",       value = tostring(police),    inline = true  },
+                    { name = "📢 Role",         value = roleMention,         inline = false },
                 },
                 footer = { text = "Server ID: " .. jobId },
                 timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
@@ -240,6 +258,14 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId)
     local prisoners = teamCounts.Prisoner
     local crimAndPris = criminals + prisoners
     local totalPlayers = crimAndPris + police
+
+    -- Determine role based on color label
+    local roleKey = colorDef.label:match("🔴") and "RedAirdrop" or
+                    colorDef.label:match("🟤") and "BrownAirdrop" or
+                    colorDef.label:match("🔵") and "BlueAirdrop" or nil
+    local roleId = roleKey and getgenv().WebhookConfig.Roles[roleKey]
+    local roleMention = roleId and ("<@&" .. roleId .. ">") or "None"
+
     local embedPayload = {
         embeds = {
             {
@@ -252,6 +278,7 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId)
                     { name = "🔗 Join Server",           value = "[Click to Join](" .. joinLink .. ")", inline = false },
                     { name = "🦹 Criminals",             value = tostring(crimAndPris), inline = false },
                     { name = "🚔 Police",                value = tostring(police), inline = true  },
+                    { name = "📢 Role",                   value = roleMention,      inline = false },
                 },
                 footer = { text = "Server ID: " .. jobId },
                 timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
@@ -300,7 +327,7 @@ local function parseGameTime(timeStr)
 end
 
 -- =============================================
---          EXISTING SCAN FUNCTIONS
+--          AIRDROP SCAN (IMPROVED)
 -- =============================================
 
 local function checkAirdrops(jobId)
@@ -315,63 +342,92 @@ local function checkAirdrops(jobId)
 
     local dropsFound = 0
     local dropsLogged = 0
+    local candidates = {}
 
+    -- First pass: look for exact "Drop" models
     for _, drop in ipairs(workspace:GetChildren()) do
         if drop.Name == "Drop" and drop:IsA("Model") then
-            dropsFound = dropsFound + 1
-
-            local walls = drop:FindFirstChild("Walls")
-            if not walls then
-                sendLog(LogLevel.WARNING, "Airdrop — No Walls", "A Drop model has no 'Walls' child.", {
-                    { name = "Drop", value = drop:GetFullName(), inline = true }
-                })
-                continue
-            end
-
-            local wall = walls:FindFirstChild("Wall")
-            if not wall or not wall:IsA("BasePart") then
-                sendLog(LogLevel.WARNING, "Airdrop — No Wall Part", "Walls folder has no valid 'Wall' BasePart.", {
-                    { name = "Drop", value = drop:GetFullName(), inline = true }
-                })
-                continue
-            end
-
-            local col = wall.Color
-            local r = math.round(col.R * 255)
-            local g = math.round(col.G * 255)
-            local b = math.round(col.B * 255)
-
-            local colorDef = matchAirdropColor(r, g, b)
-            if not colorDef then
-                sendLog(LogLevel.WARNING, "Airdrop — Unknown Color", "Could not match drop color to any known type.", {
-                    { name = "RGB",  value = r .. ", " .. g .. ", " .. b, inline = true },
-                    { name = "Drop", value = drop:GetFullName(),          inline = true },
-                })
-                continue
-            end
-
-            local dropPos = getDropPosition(drop)
-            if not dropPos then
-                sendLog(LogLevel.WARNING, "Airdrop — No Position", "Could not determine drop world position.", {
-                    { name = "Drop", value = drop:GetFullName(), inline = true }
-                })
-                continue
-            end
-
-            local locationName = getNearestLocation(dropPos)
-
-            sendAirdropEmbed(webhook, drop, colorDef, locationName, jobId)
-            dropsLogged = dropsLogged + 1
-
-            sendLog(LogLevel.SUCCESS, "Airdrop Logged", "Successfully logged an airdrop.", {
-                { name = "🎨 Type",     value = colorDef.label, inline = true },
-                { name = "📍 Location", value = locationName,   inline = true },
-            })
+            table.insert(candidates, drop)
         end
     end
 
+    -- Second pass: if none found, look for any model with "drop" in name (case insensitive)
+    if #candidates == 0 then
+        for _, obj in ipairs(workspace:GetChildren()) do
+            if obj:IsA("Model") and obj.Name:lower():find("drop") then
+                table.insert(candidates, obj)
+            end
+        end
+        if #candidates > 0 then
+            sendLog(LogLevel.INFO, "Airdrop Scan", "Found " .. #candidates .. " possible drop models via fuzzy name match.")
+        end
+    end
+
+    for _, drop in ipairs(candidates) do
+        dropsFound = dropsFound + 1
+
+        -- Try to find Walls/Wall
+        local walls = drop:FindFirstChild("Walls") or drop:FindFirstChild("walls") or drop:FindFirstChild("Wall") or drop:FindFirstChild("wall")
+        local wallPart = nil
+        if walls then
+            if walls:IsA("BasePart") then
+                wallPart = walls
+            else
+                wallPart = walls:FindFirstChildWhichIsA("BasePart", true)
+            end
+        end
+        if not wallPart then
+            -- If no dedicated wall, try to find any part with a color that might be the drop's color
+            for _, child in ipairs(drop:GetDescendants()) do
+                if child:IsA("BasePart") and child.Name:lower():find("wall") then
+                    wallPart = child
+                    break
+                end
+            end
+        end
+        if not wallPart then
+            sendLog(LogLevel.WARNING, "Airdrop — No Wall Part", "Could not find any wall part in drop model.", {
+                { name = "Drop", value = drop:GetFullName(), inline = true }
+            })
+            continue
+        end
+
+        local col = wallPart.Color
+        local r = math.round(col.R * 255)
+        local g = math.round(col.G * 255)
+        local b = math.round(col.B * 255)
+
+        local colorDef = matchAirdropColor(r, g, b)
+        if not colorDef then
+            sendLog(LogLevel.WARNING, "Airdrop — Unknown Color", "Could not match drop color.", {
+                { name = "RGB",  value = r .. ", " .. g .. ", " .. b, inline = true },
+                { name = "Drop", value = drop:GetFullName(),          inline = true },
+            })
+            continue
+        end
+
+        local dropPos = getDropPosition(drop)
+        if not dropPos then
+            sendLog(LogLevel.WARNING, "Airdrop — No Position", "Could not determine drop world position.", {
+                { name = "Drop", value = drop:GetFullName(), inline = true }
+            })
+            continue
+        end
+
+        local locationName = getNearestLocation(dropPos)
+
+        sendAirdropEmbed(webhook, drop, colorDef, locationName, jobId)
+        dropsLogged = dropsLogged + 1
+
+        sendLog(LogLevel.SUCCESS, "Airdrop Logged", "Successfully logged an airdrop.", {
+            { name = "🎨 Type",     value = colorDef.label, inline = true },
+            { name = "📍 Location", value = locationName,   inline = true },
+            { name = "RGB",         value = r..","..g..","..b, inline = true },
+        })
+    end
+
     if dropsFound == 0 then
-        sendLog(LogLevel.INFO, "Airdrop Scan Complete", "No active Drop models found in workspace.")
+        sendLog(LogLevel.WARNING, "Airdrop Scan", "No drop models found. Workspace structure may have changed.")
     else
         sendLog(LogLevel.INFO, "Airdrop Scan Complete", "Finished scanning for airdrops.", {
             { name = "Found",  value = tostring(dropsFound),  inline = true },
@@ -379,6 +435,10 @@ local function checkAirdrops(jobId)
         })
     end
 end
+
+-- =============================================
+--          STORE SCAN (WITH MANSION PREDICTOR)
+-- =============================================
 
 local function checkForOpenStores(player)
     local playerGui = player and player:FindFirstChild("PlayerGui")
@@ -438,8 +498,8 @@ local function checkForOpenStores(player)
                             break
                         end
 
-                        -- Only proceed if mansion is Open or Under Robbery (ignore closed)
-                        if not (isOpen or isRobbery) then
+                        -- ONLY log if the mansion is Open (green marker)
+                        if not isOpen then
                             break
                         end
 
@@ -478,13 +538,14 @@ local function checkForOpenStores(player)
                             timeStatus = "Closing Soon"
                             timeColor = 15158332  -- red
                         else
-                            -- Should not reach here (3 AM+ already filtered)
                             timeStatus = "Unknown"
                             timeColor = 5793266   -- grey
                         end
 
-                        -- Build robbery status string
-                        local robberyStatus = isOpen and "Open" or (isRobbery and "Under Robbery" or "Closed")
+                        -- Get role mention for mansion
+                        local roleId = getgenv().WebhookConfig.Roles["Mansion"]
+                        local roleMention = roleId and ("<@&" .. roleId .. ">") or "None"
+
                         local joinLink = getJoinLink(jobId)
                         local teamCounts = getTeamCounts()
                         local criminals = teamCounts.Criminal
@@ -496,15 +557,16 @@ local function checkForOpenStores(player)
                         local embedPayload = {
                             embeds = {
                                 {
-                                    title = "🏰 Mansion is " .. robberyStatus .. " (" .. timeStatus .. ")",
+                                    title = "🏰 Mansion is Open (" .. timeStatus .. ")",
                                     color = timeColor,
                                     fields = {
                                         { name = "⏰ Game Time",   value = timeText,                     inline = true },
-                                        { name = "📍 Status",      value = robberyStatus,                inline = true },
+                                        { name = "📍 Status",      value = "Open",                       inline = true },
                                         { name = "👥 Total Players", value = tostring(totalPlayers),       inline = true },
                                         { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
                                         { name = "🏃 Criminals",    value = tostring(crimAndPris),        inline = true },
                                         { name = "🚔 Police",       value = tostring(police),             inline = true },
+                                        { name = "📢 Role",         value = roleMention,                  inline = false },
                                     },
                                     footer = { text = "Server ID: " .. jobId },
                                     timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
@@ -518,7 +580,7 @@ local function checkForOpenStores(player)
                             pcall(function()
                                 request({ Url = webhook, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded })
                             end)
-                            sendLog(LogLevel.SUCCESS, "Mansion Logged", "Mansion " .. robberyStatus .. " at " .. timeText, {
+                            sendLog(LogLevel.SUCCESS, "Mansion Logged", "Mansion Open at " .. timeText, {
                                 { name = "Time Status", value = timeStatus, inline = true }
                             })
                         end
@@ -528,7 +590,7 @@ local function checkForOpenStores(player)
                         if isOpen then
                             if webhook and webhook ~= "" then
                                 if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
-                                    sendDiscordEmbed(webhook, displayName, "open", jobId)
+                                    sendDiscordEmbed(webhook, storeName, "open", jobId)
                                     sendLog(LogLevel.SUCCESS, "Store Open", displayName .. " is open — embed sent.", {
                                         { name = "Store", value = displayName, inline = true }
                                     })
@@ -546,7 +608,7 @@ local function checkForOpenStores(player)
                         elseif isRobbery then
                             if webhook and webhook ~= "" then
                                 if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
-                                    sendDiscordEmbed(webhook, displayName, "robbery", jobId)
+                                    sendDiscordEmbed(webhook, storeName, "robbery", jobId)
                                     sendLog(LogLevel.SUCCESS, "Robbery Logged", displayName .. " is under robbery — embed sent.", {
                                         { name = "Store", value = displayName, inline = true }
                                     })
