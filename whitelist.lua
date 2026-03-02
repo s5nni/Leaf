@@ -1,10 +1,13 @@
-local Whitelist = {
-    ["716FCC14-6490-418D-8A86-F95C17A8FC7B"] = true,
+local allowedIds = {
+    "716FCC14-6490-418D-8A86-F95C17A8FC7B",
 }
 
-local function IsWhitelisted()
+getgenv().WhitelistCheck = function()
     local clientId = game:GetService("RbxAnalyticsService"):GetClientId()
-    return Whitelist[clientId] == true
+    for _, id in ipairs(allowedIds) do
+        if id == clientId then
+            return true
+        end
+    end
+    return false
 end
-
-return IsWhitelisted
