@@ -764,7 +764,7 @@ local function checkForOpenStores(player)
                         }
 
                         if roleMention then
-                            embedPayload.content = roleMention
+                            embedPayload.content = roleMention.." https://cdn.discordapp.com/attachments/1478029768816590949/1478098756070281267/Mansion_2.png?ex=69a72a3d&is=69a5d8bd&hm=a7a1bcf4a9f6fe109ff7bcf16df21e34ca2cd5e28463c63ab253d9e08e031add&"
                         end
 
                         local ok, encoded = pcall(function()
