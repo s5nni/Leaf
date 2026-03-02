@@ -63,9 +63,9 @@ getgenv().WebhookConfig = {
         Train         = "https://cdn.discordapp.com/attachments/968257025345724497/1478102172670492856/Cargo_Train_1.png?ex=69a72d6b&is=69a5dbeb&hm=5b92a63a774a3ceb0ef4a52e95ccba411f7b498bf26c365ecc57adf0bf103d3a&",
         Mansion       = "https://cdn.discordapp.com/attachments/968257025345724497/1478102813333786695/Mansion_2.png?ex=69a72e04&is=69a5dc84&hm=657737da9225d00e602b59fe2ba4626443f2dbcc2ddee1a2ea335d071a8fa002&",
         Passenger_Train = "https://cdn.discordapp.com/attachments/968257025345724497/1478102813669326920/Passenger_Train_1.png?ex=69a72e04&is=69a5dc84&hm=082f5b02d39e8c2ff18a2f36b00ab0a537f8b6a3fb96872b779ccb1e2ee115f1&",
-        Bank_Truck      = "https://example.com/bank_truck.png",
-        RedAirdrop    = "https://example.com/redairdrop.png",
-        BrownAirdrop  = "https://example.com/brownairdrop.png",
-        BlueAirdrop   = "https://example.com/blueairdrop.png",
+        Bank_Truck      = "https://cdn.discordapp.com/attachments/1444748474183712870/1478164360458141737/Kopie_van_AIRDROP.jpg?ex=69a76756&is=69a615d6&hm=87a85dd64e710ee146855f53ec7d81932d493d7b28181476c1aec4b960782023&",
+        RedAirdrop    = "https://media.discordapp.net/attachments/1444748474183712870/1478163115907616828/AIRDROP.jpg?ex=69a7662d&is=69a614ad&hm=b7a615a88a3d52b64e3adc1c39cc2e78753944c65894b5e727a23e7c0fc78347&=&format=webp&width=1489&height=838",
+        BrownAirdrop  = "https://media.discordapp.net/attachments/1444748474183712870/1478163115907616828/AIRDROP.jpg?ex=69a7662d&is=69a614ad&hm=b7a615a88a3d52b64e3adc1c39cc2e78753944c65894b5e727a23e7c0fc78347&=&format=webp&width=1489&height=838",
+        BlueAirdrop   = "https://media.discordapp.net/attachments/1444748474183712870/1478163115907616828/AIRDROP.jpg?ex=69a7662d&is=69a614ad&hm=b7a615a88a3d52b64e3adc1c39cc2e78753944c65894b5e727a23e7c0fc78347&=&format=webp&width=1489&height=838",
     }
 }
