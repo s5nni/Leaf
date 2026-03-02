@@ -12,7 +12,7 @@ getgenv().WebhookConfig = {
         Train = "https://ptb.discord.com/api/webhooks/1477994924103307357/0DqAB9sIh5_t9X51Y8NA30ed3ZRHlPNEKpfzPXwjrGC_ocLDiTI0niT137vOKjimVQv6",
         Airdrop = "https://ptb.discord.com/api/webhooks/1477995014058545162/msBv-JZzWCEULY5pdLtPmS7CW8UwMkgWVvOAVnx6vtvvErKHmkNzYtXGdL1eiqgsv_LP",
         Mansion = "https://ptb.discord.com/api/webhooks/1477999309730349177/ddmLYjZue-02Q-30ENz-IIg2a7ZqKwn9DrDy-Gi5KFe2gGagO1XKq62QWU7AcByHc0HM",
-        Log = "",
+        Log = "https://ptb.discord.com/api/webhooks/1478020532585889792/WamEKrBWrx1KM1RbxyciPeFdnRwmLpcTYo8Oy7JkG9CKuUT8yJeii6TmuPDkB5Q2oCyT",
     },
     Icons = {
         Jewelry_Store = "rbxassetid://118335970965314",
