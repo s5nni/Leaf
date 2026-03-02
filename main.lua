@@ -252,7 +252,6 @@ local function getAxisForHolder(holderModel)
 end
 
 local function getCrownJewelCode()
-    -- Safety checks
     local casino = workspace:FindFirstChild("Casino")
     if not casino then
         sendLog(LogLevel.WARNING, "Crown Jewel Code", "Casino not found in workspace.")
@@ -274,9 +273,8 @@ local function getCrownJewelCode()
 
     for _, v in ipairs(codesFolder:GetDescendants()) do
         if v:IsA("TextLabel") and v.Text ~= "" then
-            local part = v.Parent.Parent         -- SurfaceGui -> Part
-            local holder = v.Parent.Parent.Parent -- Part -> Codes Holder Model
-
+            local part = v.Parent.Parent
+            local holder = v.Parent.Parent.Parent
             if part:IsA("BasePart") then
                 if detectedAxis == nil then
                     detectedAxis = getAxisForHolder(holder)
@@ -290,7 +288,7 @@ local function getCrownJewelCode()
     end
 
     if #digits == 0 then
-        return nil  -- robbery closed or no digits
+        return nil
     end
 
     if detectedAxis == nil then
@@ -298,7 +296,6 @@ local function getCrownJewelCode()
         detectedAxis = "X"
     end
 
-    -- Sort digits based on axis
     table.sort(digits, function(a, b)
         if detectedAxis == "X" then
             return a.part.Position.X < b.part.Position.X
@@ -369,7 +366,7 @@ local function sendDiscordEmbed(webhookUrl, storeName, status, jobId)
     end)
 end
 
-local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId)
+local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId, timerText)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
@@ -393,6 +390,7 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId)
                 fields = {
                     { name = "🎨 Drop Type",             value = colorDef.label,   inline = true  },
                     { name = "📍 Location",              value = locationName,     inline = true  },
+                    { name = "⏳ Time Left",             value = timerText or "N/A", inline = true },
                     { name = "👥 Total Players",         value = tostring(totalPlayers), inline = true },
                     { name = "🔗 Join Server",           value = "[Click to Join](" .. joinLink .. ")", inline = false },
                     { name = "🦹 Criminals",             value = tostring(crimAndPris), inline = false },
@@ -511,7 +509,7 @@ local function getServerRegion(placeId, serverId)
 end
 
 -- =============================================
---          AIRDROP SCAN
+--          UPDATED AIRDROP DETECTION
 -- =============================================
 
 local function checkAirdrops(jobId)
@@ -536,25 +534,26 @@ local function checkAirdrops(jobId)
 
     if #candidates == 0 then
         sendLog(LogLevel.WARNING, "Airdrop Scan", "No models named 'Drop' found in workspace.")
+        return
     end
 
     for _, drop in ipairs(candidates) do
         dropsFound = dropsFound + 1
-        sendLog(LogLevel.INFO, "Airdrop Candidate", "Found drop model: " .. drop:GetFullName())
+        sendLog(LogLevel.INFO, "Airdrop Candidate", "Examining drop: " .. drop:GetFullName())
 
+        -- -------------------- WALL (COLOUR) DETECTION --------------------
         local wallPart = nil
         local wallsFolder = drop:FindFirstChild("Walls") or drop:FindFirstChild("walls")
         if wallsFolder then
-            wallPart = wallsFolder:FindFirstChildWhichIsA("BasePart", true)
-            if wallPart then
-                sendLog(LogLevel.INFO, "Wall Found", "Found wall part inside Walls folder: " .. wallPart.Name)
+            wallPart = wallsFolder:FindFirstChild("Wall") or wallsFolder:FindFirstChild("wall")
+            if not wallPart then
+                wallPart = wallsFolder:FindFirstChildWhichIsA("BasePart", true)
             end
         end
         if not wallPart then
             for _, child in ipairs(drop:GetChildren()) do
                 if child:IsA("BasePart") and child.Name:lower() == "wall" then
                     wallPart = child
-                    sendLog(LogLevel.INFO, "Wall Found", "Found direct wall part: " .. child.Name)
                     break
                 end
             end
@@ -568,24 +567,23 @@ local function checkAirdrops(jobId)
             end
             if #parts == 1 then
                 wallPart = parts[1]
-                sendLog(LogLevel.INFO, "Wall Found", "Only one BasePart in model, assuming it's the wall: " .. wallPart.Name)
             elseif #parts > 1 then
                 local partNames = {}
                 for _, p in ipairs(parts) do
                     table.insert(partNames, p.Name)
                 end
-                sendLog(LogLevel.WARNING, "Airdrop — Multiple Parts", "Drop has multiple BaseParts, cannot determine wall.", {
+                sendLog(LogLevel.WARNING, "Airdrop — Multiple Parts", "Drop has multiple BaseParts, using first as wall.", {
                     { name = "Parts", value = table.concat(partNames, ", "), inline = false }
                 })
-                continue
+                wallPart = parts[1]
             else
                 sendLog(LogLevel.WARNING, "Airdrop — No BaseParts", "Drop model contains no BasePart descendants.")
-                continue
+                wallPart = nil
             end
         end
 
         if not wallPart then
-            sendLog(LogLevel.WARNING, "Airdrop — No Wall Part", "Could not identify any wall part in drop model.")
+            sendLog(LogLevel.WARNING, "Airdrop — No Wall Part", "Could not identify any wall part; skipping drop.")
             continue
         end
 
@@ -603,34 +601,66 @@ local function checkAirdrops(jobId)
             continue
         end
 
-        local dropPos = getDropPosition(drop)
-        if not dropPos then
-            sendLog(LogLevel.WARNING, "Airdrop — No Position", "Could not determine drop world position.", {
-                { name = "Drop", value = drop:GetFullName(), inline = true }
-            })
+        -- -------------------- NPCs (UNOPENED CHECK) --------------------
+        local npcsFolder = drop:FindFirstChild("NPCs")
+        local hasNPCs = false
+        if npcsFolder then
+            hasNPCs = #npcsFolder:GetChildren() > 0
+        end
+        if hasNPCs then
+            sendLog(LogLevel.INFO, "Airdrop — Opened", "Drop has NPCs, not logging.")
             continue
         end
 
-        local locationName = getNearestLocation(dropPos)
+        -- -------------------- COUNTDOWN TIMER --------------------
+        local countdownFolder = drop:FindFirstChild("Countdown")
+        local timerLabel = nil
+        local timerText = nil
 
-        sendAirdropEmbed(webhook, drop, colorDef, locationName, jobId)
+        if countdownFolder then
+            local billboard = countdownFolder:FindFirstChildWhichIsA("BillboardGui", true)
+            if billboard then
+                timerLabel = billboard:FindFirstChildWhichIsA("TextLabel")
+                if timerLabel then
+                    timerText = timerLabel.Text
+                end
+            end
+        end
+
+        if timerText then
+            task.wait(3)
+            local newText = timerLabel and timerLabel.Text
+            if newText ~= timerText then
+                -- Timer changed – it's counting down (unopened). Use the new text.
+                timerText = newText
+            else
+                -- Timer did not change – according to your logic, this means it's unopened? You said:
+                -- "if it matches the stored string it means the airdrop is really unopened"
+                -- So we keep timerText as is and proceed.
+                -- Nothing to do, just keep the original text.
+            end
+        else
+            timerText = "No timer"
+        end
+
+        -- -------------------- FINAL LOGGING --------------------
+        local dropPos = getDropPosition(drop)
+        local locationName = dropPos and getNearestLocation(dropPos) or "Unknown Location"
+
+        sendAirdropEmbed(webhook, drop, colorDef, locationName, jobId, timerText)
         dropsLogged = dropsLogged + 1
 
-        sendLog(LogLevel.SUCCESS, "Airdrop Logged", "Successfully logged an airdrop.", {
+        sendLog(LogLevel.SUCCESS, "Airdrop Logged", "Unopened airdrop logged.", {
             { name = "🎨 Type",     value = colorDef.label, inline = true },
             { name = "📍 Location", value = locationName,   inline = true },
-            { name = "RGB",         value = r..","..g..","..b, inline = true },
+            { name = "⏳ Timer",    value = timerText,       inline = true },
         })
     end
 
-    if dropsFound == 0 then
-        sendLog(LogLevel.WARNING, "Airdrop Scan", "No drop models found. Workspace structure may have changed.")
-    else
-        sendLog(LogLevel.INFO, "Airdrop Scan Complete", "Finished scanning for airdrops.", {
-            { name = "Found",  value = tostring(dropsFound),  inline = true },
-            { name = "Logged", value = tostring(dropsLogged), inline = true },
-        })
-    end
+    sendLog(LogLevel.INFO, "Airdrop Scan Complete", "Finished scanning for airdrops.", {
+        { name = "Found",  value = tostring(dropsFound),  inline = true },
+        { name = "Logged", value = tostring(dropsLogged), inline = true },
+    })
 end
 
 -- =============================================
@@ -690,23 +720,15 @@ local function checkForOpenStores(player)
                     --          CROWN JEWEL (with code)
                     -- =========================================
                     if storeName == "Crown_Jewel" then
-                        -- Skip if logging is toggled off
                         if getgenv().RobberyToggles and not getgenv().RobberyToggles[storeName] then
                             skippedCount = skippedCount + 1
                             break
                         end
-
-                        -- Only log if open or under robbery
                         if not (isOpen or isRobbery) then
                             break
                         end
 
-                        -- Get the robbery code
-                        local code = getCrownJewelCode()
-                        if not code then
-                            code = "N/A"
-                        end
-
+                        local code = getCrownJewelCode() or "N/A"
                         local now = os.time()
                         local joinLink = getJoinLink(jobId)
                         local teamCounts = getTeamCounts()
