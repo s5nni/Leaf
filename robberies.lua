@@ -1,3 +1,4 @@
+-- robberies.lua
 getgenv().RobberyToggles = {
     Jewelry_Store = true,
     Power_Plant = true,
@@ -11,4 +12,6 @@ getgenv().RobberyToggles = {
     Train = true,
     Mansion = true,
     Airdrop = true,
+    Passenger_Train = true,
+    Bank_Truck = true,
 }
