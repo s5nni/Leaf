@@ -141,7 +141,7 @@ local function waitForLoad()
     if not player.Character then
         player.CharacterAdded:Wait()
     end
-    repeat task.wait(10) until game:IsLoaded()
+    repeat task.wait(0.3) until game:IsLoaded()
     task.wait(2)
     return player
 end
