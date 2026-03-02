@@ -6,7 +6,6 @@ if not getgenv().VisitedServers then
     getgenv().VisitedServers = {}
 end
 
--- Cache for server regions
 if not getgenv().ServerRegionCache then
     getgenv().ServerRegionCache = {}
 end
@@ -314,7 +313,7 @@ local function getCrownJewelCode()
 end
 
 -- =============================================
---          DISCORD EMBED FUNCTIONS
+--          DISCORD EMBED FUNCTIONS (with thumbnail)
 -- =============================================
 
 local function sendDiscordEmbed(webhookUrl, storeName, status, jobId)
@@ -334,25 +333,28 @@ local function sendDiscordEmbed(webhookUrl, storeName, status, jobId)
     local roleId = getgenv().WebhookConfig.Roles[storeName]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
 
-    local embedPayload = {
-        embeds = {
-            {
-                title = title,
-                color = color,
-                fields = {
-                    { name = "📍 Status",      value = statusText,          inline = true  },
-                    { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
-                    { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
-                    { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
-                    { name = "🚔 Police",       value = tostring(police),    inline = true  },
-                    { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
-                },
-                footer = { text = "Server ID: " .. jobId },
-                timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-            }
-        }
+    local imageUrl = getgenv().WebhookConfig.Images[storeName]
+
+    local embed = {
+        title = title,
+        color = color,
+        fields = {
+            { name = "📍 Status",      value = statusText,          inline = true  },
+            { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
+            { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
+            { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
+            { name = "🚔 Police",       value = tostring(police),    inline = true  },
+            { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
+        },
+        footer = { text = "Server ID: " .. jobId },
+        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
 
+    if imageUrl then
+        embed.thumbnail = { url = imageUrl }
+    end
+
+    local embedPayload = { embeds = { embed } }
     if roleMention then
         embedPayload.content = roleMention
     end
@@ -382,27 +384,30 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
     local roleId = roleKey and getgenv().WebhookConfig.Roles[roleKey]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
 
-    local embedPayload = {
-        embeds = {
-            {
-                title = "📦 Airdrop Detected!",
-                color = colorDef.embedColor,
-                fields = {
-                    { name = "🎨 Drop Type",             value = colorDef.label,   inline = true  },
-                    { name = "📍 Location",              value = locationName,     inline = true  },
-                    { name = "⏳ Time Left",             value = timerText or "N/A", inline = true },
-                    { name = "👥 Total Players",         value = tostring(totalPlayers), inline = true },
-                    { name = "🔗 Join Server",           value = "[Click to Join](" .. joinLink .. ")", inline = false },
-                    { name = "🦹 Criminals",             value = tostring(crimAndPris), inline = false },
-                    { name = "🚔 Police",                value = tostring(police), inline = true  },
-                    { name = "⏱️ Logged",                value = "<t:" .. now .. ":R>", inline = true },
-                },
-                footer = { text = "Server ID: " .. jobId },
-                timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-            }
-        }
+    local imageUrl = roleKey and getgenv().WebhookConfig.Images[roleKey]
+
+    local embed = {
+        title = "📦 Airdrop Detected!",
+        color = colorDef.embedColor,
+        fields = {
+            { name = "🎨 Drop Type",             value = colorDef.label,   inline = true  },
+            { name = "📍 Location",              value = locationName,     inline = true  },
+            { name = "⏳ Time Left",             value = timerText or "N/A", inline = true },
+            { name = "👥 Total Players",         value = tostring(totalPlayers), inline = true },
+            { name = "🔗 Join Server",           value = "[Click to Join](" .. joinLink .. ")", inline = false },
+            { name = "🦹 Criminals",             value = tostring(crimAndPris), inline = false },
+            { name = "🚔 Police",                value = tostring(police), inline = true  },
+            { name = "⏱️ Logged",                value = "<t:" .. now .. ":R>", inline = true },
+        },
+        footer = { text = "Server ID: " .. jobId },
+        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
 
+    if imageUrl then
+        embed.thumbnail = { url = imageUrl }
+    end
+
+    local embedPayload = { embeds = { embed } }
     if roleMention then
         embedPayload.content = roleMention
     end
@@ -631,13 +636,9 @@ local function checkAirdrops(jobId)
             task.wait(3)
             local newText = timerLabel and timerLabel.Text
             if newText ~= timerText then
-                -- Timer changed – it's counting down (unopened). Use the new text.
                 timerText = newText
             else
-                -- Timer did not change – according to your logic, this means it's unopened? You said:
-                -- "if it matches the stored string it means the airdrop is really unopened"
-                -- So we keep timerText as is and proceed.
-                -- Nothing to do, just keep the original text.
+                -- Timer unchanged – keep original
             end
         else
             timerText = "No timer"
@@ -743,28 +744,31 @@ local function checkForOpenStores(player)
                         local roleId = getgenv().WebhookConfig.Roles["Crown_Jewel"]
                         local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
 
-                        local embedPayload = {
-                            embeds = {
-                                {
-                                    title = title,
-                                    color = isOpen and 3066993 or 15105570,
-                                    fields = {
-                                        { name = "📍 Status",      value = statusText,          inline = true  },
-                                        { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
-                                        { name = "🔢 Code",        value = code,                 inline = true  },
-                                        { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
-                                        { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
-                                        { name = "🚔 Police",       value = tostring(police),    inline = true  },
-                                        { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
-                                    },
-                                    footer = { text = "Server ID: " .. jobId },
-                                    timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-                                }
-                            }
+                        local imageUrl = getgenv().WebhookConfig.Images["Crown_Jewel"]
+
+                        local embed = {
+                            title = title,
+                            color = isOpen and 3066993 or 15105570,
+                            fields = {
+                                { name = "📍 Status",      value = statusText,          inline = true  },
+                                { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
+                                { name = "🔢 Code",        value = code,                 inline = true  },
+                                { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
+                                { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
+                                { name = "🚔 Police",       value = tostring(police),    inline = true  },
+                                { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
+                            },
+                            footer = { text = "Server ID: " .. jobId },
+                            timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
                         }
 
+                        if imageUrl then
+                            embed.thumbnail = { url = imageUrl }
+                        end
+
+                        local embedPayload = { embeds = { embed } }
                         if roleMention then
-                            embedPayload.content = roleMention.." https://cdn.discordapp.com/attachments/1478029768816590949/1478098756070281267/Mansion_2.png?ex=69a72a3d&is=69a5d8bd&hm=a7a1bcf4a9f6fe109ff7bcf16df21e34ca2cd5e28463c63ab253d9e08e031add&"
+                            embedPayload.content = roleMention
                         end
 
                         local ok, encoded = pcall(function()
@@ -835,28 +839,33 @@ local function checkForOpenStores(player)
                         local crimAndPris = criminals + prisoners
                         local totalPlayers = crimAndPris + police
 
-                        local embedPayload = {
-                            embeds = {
-                                {
-                                    title = "🏰 Mansion is Open (" .. timeStatus .. ")",
-                                    color = timeColor,
-                                    fields = {
-                                        { name = "⏰ Game Time",   value = timeText,                     inline = true },
-                                        { name = "📍 Status",      value = "Open",                       inline = true },
-                                        { name = "👥 Total Players", value = tostring(totalPlayers),       inline = true },
-                                        { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
-                                        { name = "🏃 Criminals",    value = tostring(crimAndPris),        inline = true },
-                                        { name = "🚔 Police",       value = tostring(police),             inline = true },
-                                        { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>",        inline = true },
-                                    },
-                                    footer = { text = "Server ID: " .. jobId },
-                                    timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-                                }
-                            }
+                        local imageUrl = getgenv().WebhookConfig.Images["Mansion"]
+
+                        local embed = {
+                            title = "🏰 Mansion is Open (" .. timeStatus .. ")",
+                            color = timeColor,
+                            fields = {
+                                { name = "⏰ Game Time",   value = timeText,                     inline = true },
+                                { name = "📍 Status",      value = "Open",                       inline = true },
+                                { name = "👥 Total Players", value = tostring(totalPlayers),       inline = true },
+                                { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
+                                { name = "🏃 Criminals",    value = tostring(crimAndPris),        inline = true },
+                                { name = "🚔 Police",       value = tostring(police),             inline = true },
+                                { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>",        inline = true },
+                            },
+                            footer = { text = "Server ID: " .. jobId },
+                            timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
                         }
+
+                        if imageUrl then
+                            embed.thumbnail = { url = imageUrl }
+                        end
+
+                        local embedPayload = { embeds = { embed } }
                         if roleMention then
                             embedPayload.content = roleMention
                         end
+
                         local ok, encoded = pcall(function()
                             return game:GetService("HttpService"):JSONEncode(embedPayload)
                         end)
