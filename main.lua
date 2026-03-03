@@ -317,7 +317,7 @@ local function sendDiscordEmbed(webhookUrl, storeName, status, jobId, isSecondPa
             { name = "🚔 Police",       value = tostring(police),    inline = true  },
             { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
         },
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        footer = { text = "Version: " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then
@@ -364,7 +364,7 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
             { name = "🚔 Police",                value = tostring(police), inline = true  },
             { name = "⏱️ Logged",                value = "<t:" .. now .. ":R>", inline = true },
         },
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        footer = { text = "Version: " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then
@@ -607,7 +607,7 @@ local function scanStores(player, jobId, loggedStores, isSecondPass)
                                 { name = "🚔 Police",       value = tostring(pol),      inline = true  },
                                 { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
                             },
-                            footer = { text = "Leaf Logger " .. BOT_VERSION },
+                            footer = { text = "Version: " .. BOT_VERSION },
                             timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
                         }
                         if imageUrl then
@@ -673,7 +673,7 @@ local function scanStores(player, jobId, loggedStores, isSecondPass)
                                 { name = "🚔 Police",       value = tostring(pol),      inline = true  },
                                 { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
                             },
-                            footer = { text = "Leaf Logger " .. BOT_VERSION },
+                            footer = { text = "Version: " .. BOT_VERSION },
                             timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
                         }
                         if imageUrl then
