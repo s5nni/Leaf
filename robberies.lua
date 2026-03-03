@@ -1,4 +1,3 @@
--- robberies.lua
 getgenv().RobberyToggles = {
     Jewelry_Store = true,
     Power_Plant = true,
