@@ -2,9 +2,58 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/whitelist.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/robberies.lua"))()
 
-if not getgenv().VisitedServers then
-    getgenv().VisitedServers = {}
+-- File system for visited servers (persistent storage)
+local function getVisitedFilePath()
+    local folder = "LeafBot_" .. game.PlaceId
+    if not isfolder(folder) then
+        makefolder(folder)
+    end
+    return folder .. "/visited_servers.json"
 end
+
+local function loadVisitedServers()
+    local path = getVisitedFilePath()
+    if isfile(path) then
+        local success, data = pcall(function()
+            return game:GetService("HttpService"):JSONDecode(readfile(path))
+        end)
+        if success and type(data) == "table" then
+            return data
+        end
+    end
+    return {}
+end
+
+local function saveVisitedServers(data)
+    local path = getVisitedFilePath()
+    local success, json = pcall(function()
+        return game:GetService("HttpService"):JSONEncode(data)
+    end)
+    if success then
+        writefile(path, json)
+    end
+end
+
+local function cleanupOldServers()
+    local visited = loadVisitedServers()
+    local currentTime = os.time()
+    local changed = false
+    
+    for serverId, timestamp in pairs(visited) do
+        if currentTime - timestamp > 300 then -- 5 minutes (300 seconds)
+            visited[serverId] = nil
+            changed = true
+        end
+    end
+    
+    if changed then
+        saveVisitedServers(visited)
+    end
+    return visited
+end
+
+-- Initialize visited servers from file
+getgenv().VisitedServers = cleanupOldServers()
 
 if not getgenv().ServerRegionCache then
     getgenv().ServerRegionCache = {}
@@ -15,7 +64,7 @@ if getgenv().WhitelistCheck and not getgenv().WhitelistCheck() then
     return
 end
 
-local AIRDROP_LOCATION_RADIUS = 500
+local AIRDROP_LOCATION_RADIUS = math.huge -- Unlimited range, just find closest
 
 local AIRDROP_COLORS = {
     { r = 147, g = 44,  b = 53,  label = "🔴 Red",   embedColor = 15158332 },
@@ -23,37 +72,34 @@ local AIRDROP_COLORS = {
     { r = 49,  g = 98,  b = 149, label = "🔵 Blue",   embedColor = 3447003  },
 }
 
-local AIRDROP_LOCATIONS = {
-    {
-        name = "Dunes",
-        getPosition = function()
-            local tomb = workspace:FindFirstChild("RobberyTomb")
-            if tomb then
-                local inner = tomb:FindFirstChild("Tomb")
-                if inner and inner:IsA("Model") then
-                    return inner:GetModelCFrame().Position
-                elseif inner and inner:FindFirstChildWhichIsA("BasePart") then
-                    return inner:FindFirstChildWhichIsA("BasePart").Position
-                end
-            end
-            return nil
-        end
-    },
-    {
-        name = "Cactus Valley",
-        getPosition = function()
-            local casino = workspace:FindFirstChild("Casino")
-            if casino then
-                if casino:IsA("Model") then
-                    return casino:GetModelCFrame().Position
-                elseif casino:FindFirstChildWhichIsA("BasePart") then
-                    return casino:FindFirstChildWhichIsA("BasePart").Position
-                end
-            end
-            return nil
-        end
-    },
+-- Store locations for comparison
+local LOCATIONS = {
+    Tomb = nil,
+    Casino = nil
 }
+
+local function updateLocationPositions()
+    local tomb = workspace:FindFirstChild("RobberyTomb")
+    if tomb then
+        local inner = tomb:FindFirstChild("Tomb")
+        if inner then
+            if inner:IsA("Model") then
+                LOCATIONS.Tomb = inner:GetModelCFrame().Position
+            elseif inner:FindFirstChildWhichIsA("BasePart") then
+                LOCATIONS.Tomb = inner:FindFirstChildWhichIsA("BasePart").Position
+            end
+        end
+    end
+    
+    local casino = workspace:FindFirstChild("Casino")
+    if casino then
+        if casino:IsA("Model") then
+            LOCATIONS.Casino = casino:GetModelCFrame().Position
+        elseif casino:FindFirstChildWhichIsA("BasePart") then
+            LOCATIONS.Casino = casino:FindFirstChildWhichIsA("BasePart").Position
+        end
+    end
+end
 
 local MAX_PLAYERS = 5
 
@@ -75,7 +121,7 @@ local function getJoinLink(jobId)
 end
 
 -- =============================================
---              LOGGING SYSTEM (using HttpService)
+--              LOGGING SYSTEM
 -- =============================================
 local function sendLog(level, title, description, fields)
     local webhook = getgenv().WebhookConfig.Webhooks.Log
@@ -134,6 +180,7 @@ local function waitForLoad()
     end
     repeat task.wait(0.3) until game:IsLoaded()
     task.wait(2)
+    updateLocationPositions()
     return player
 end
 
@@ -143,8 +190,10 @@ end
 
 local function getTeamCounts()
     local counts = { Criminal = 0, Police = 0, Prisoner = 0 }
+    local localPlayer = game:GetService("Players").LocalPlayer
+    
     for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
-        if player.Team then
+        if player ~= localPlayer and player.Team then
             local teamName = player.Team.Name
             if counts[teamName] ~= nil then
                 counts[teamName] = counts[teamName] + 1
@@ -154,13 +203,31 @@ local function getTeamCounts()
     return counts
 end
 
+local function getPlayerList()
+    local players = {}
+    local localPlayer = game:GetService("Players").LocalPlayer
+    
+    for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
+        if player ~= localPlayer then
+            table.insert(players, player.Name)
+        end
+    end
+    
+    if #players == 0 then
+        return "None"
+    elseif #players <= 5 then
+        return table.concat(players, ", ")
+    else
+        return table.concat(players, ", ", 1, 5) .. " and " .. (#players - 5) .. " more"
+    end
+end
+
 local function colorDistance(r1, g1, b1, r2, g2, b2)
     return math.sqrt((r1 - r2)^2 + (g1 - g2)^2 + (b1 - b2)^2)
 end
 
 local function matchAirdropColor(r, g, b)
-    local best = nil
-    local bestDist = math.huge
+    local best, bestDist = nil, math.huge
     for _, def in ipairs(AIRDROP_COLORS) do
         local dist = colorDistance(r, g, b, def.r, def.g, def.b)
         if dist < bestDist then
@@ -183,38 +250,17 @@ local function getDropPosition(drop)
 end
 
 local function getNearestLocation(pos)
-    local best = nil
-    local bestDist = math.huge
-    for _, loc in ipairs(AIRDROP_LOCATIONS) do
-        local refPos = loc.getPosition()
-        if refPos then
-            local dist = (pos - refPos).Magnitude
-            if dist < bestDist then
-                bestDist = dist
-                best = { name = loc.name, distance = dist }
-            end
-        end
-    end
-    if best and best.distance <= AIRDROP_LOCATION_RADIUS then
-        return best.name
-    end
-    return "Unknown Location"
-end
-
--- =============================================
---          TELEPORT HELPER (from old code)
--- =============================================
-local function teleportTo(position)
-    local player = game:GetService("Players").LocalPlayer
-    if not player then return end
-    local character = player.Character
-    if not character then
-        player.CharacterAdded:Wait()
-        character = player.Character
-    end
-    local hrp = character:FindFirstChild("HumanoidRootPart")
-    if hrp then
-        hrp.CFrame = CFrame.new(position)
+    if not pos then return "Unknown Location" end
+    
+    local distToTomb = LOCATIONS.Tomb and (pos - LOCATIONS.Tomb).Magnitude or math.huge
+    local distToCasino = LOCATIONS.Casino and (pos - LOCATIONS.Casino).Magnitude or math.huge
+    
+    if distToTomb < distToCasino then
+        return "Dunes"
+    elseif distToCasino < distToTomb then
+        return "Cactus Valley"
+    else
+        return "Unknown Location"
     end
 end
 
@@ -320,9 +366,9 @@ local function getCrownJewelCode()
 end
 
 -- =============================================
---          DISCORD EMBED FUNCTIONS (with HttpService)
+--          DISCORD EMBED FUNCTIONS
 -- =============================================
-local function sendDiscordEmbed(webhookUrl, storeName, status, jobId)
+local function sendDiscordEmbed(webhookUrl, storeName, status, jobId, isSecondPass)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
@@ -336,6 +382,9 @@ local function sendDiscordEmbed(webhookUrl, storeName, status, jobId)
     local statusText = isOpen and "Open" or "Under Robbery"
     local displayName = formatName(storeName)
     local title = displayName .. " is " .. string.lower(statusText) .. "."
+    
+    local playerList = getPlayerList()
+    local passText = isSecondPass and " (Delayed)" or ""
 
     local roleId = getgenv().WebhookConfig.Roles[storeName]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
@@ -343,11 +392,12 @@ local function sendDiscordEmbed(webhookUrl, storeName, status, jobId)
     local imageUrl = getgenv().WebhookConfig.Images[storeName]
 
     local embed = {
-        title = title,
+        title = title .. passText,
         color = color,
         fields = {
             { name = "📍 Status",      value = statusText,          inline = true  },
             { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
+            { name = "👤 Players",      value = playerList,         inline = false },
             { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
             { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
             { name = "🚔 Police",       value = tostring(police),    inline = true  },
@@ -375,7 +425,7 @@ local function sendDiscordEmbed(webhookUrl, storeName, status, jobId)
     end)
 end
 
-local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId, timerText)
+local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId, timerText, isSecondPass)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
@@ -384,6 +434,8 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
     local prisoners = teamCounts.Prisoner
     local crimAndPris = criminals + prisoners
     local totalPlayers = crimAndPris + police
+    local playerList = getPlayerList()
+    local passText = isSecondPass and " (Delayed)" or ""
 
     local roleKey = colorDef.label:match("🔴") and "RedAirdrop" or
                     colorDef.label:match("🟤") and "BrownAirdrop" or
@@ -394,13 +446,14 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
     local imageUrl = roleKey and getgenv().WebhookConfig.Images[roleKey]
 
     local embed = {
-        title = "📦 Airdrop Detected!",
+        title = "📦 Airdrop Detected!" .. passText,
         color = colorDef.embedColor,
         fields = {
             { name = "🎨 Drop Type",             value = colorDef.label,   inline = true  },
             { name = "📍 Location",              value = locationName,     inline = true  },
             { name = "⏳ Time Left",             value = timerText or "N/A", inline = true },
             { name = "👥 Total Players",         value = tostring(totalPlayers), inline = true },
+            { name = "👤 Players",                value = playerList,       inline = false },
             { name = "🔗 Join Server",           value = "[Click to Join](" .. joinLink .. ")", inline = false },
             { name = "🦹 Criminals",             value = tostring(crimAndPris), inline = false },
             { name = "🚔 Police",                value = tostring(police), inline = true  },
@@ -429,7 +482,7 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
 end
 
 -- =============================================
---          MANSION TIME HELPER
+--          MANSION TIME HELPER (Improved)
 -- =============================================
 local function getGameTimeText()
     local success, label = pcall(function()
@@ -448,6 +501,8 @@ local function parseGameTime(timeStr)
     hour = tonumber(hour)
     minute = tonumber(minute)
     period = period:upper()
+    
+    -- Convert to 24-hour format for easier comparison
     if period == "PM" and hour ~= 12 then
         hour = hour + 12
     elseif period == "AM" and hour == 12 then
@@ -456,8 +511,429 @@ local function parseGameTime(timeStr)
     return hour, minute, period
 end
 
+local function getMansionStatus()
+    local timeText = getGameTimeText()
+    if not timeText then return nil, nil, nil end
+    
+    local hour, minute, period = parseGameTime(timeText)
+    if not hour then return nil, nil, nil end
+    
+    -- Convert to minutes since midnight for easier range checking
+    local totalMinutes = hour * 60 + (minute or 0)
+    
+    -- 4:00 PM = 16:00 = 960 minutes
+    -- 5:45 PM = 17:45 = 1065 minutes
+    -- 6:00 PM = 18:00 = 1080 minutes
+    -- 12:00 AM = 0:00 = 0 minutes
+    -- 12:15 AM = 0:15 = 15 minutes
+    -- 2:00 AM = 2:00 = 120 minutes
+    
+    local status, displayStatus
+    
+    if totalMinutes >= 1080 or totalMinutes < 15 then
+        status = "open"
+        displayStatus = "Open"
+    elseif totalMinutes >= 960 and totalMinutes < 1080 then
+        status = "opening_soon"
+        displayStatus = "Opening Soon"
+    elseif totalMinutes >= 15 and totalMinutes < 120 then
+        status = "closing_soon"
+        displayStatus = "Closing Soon"
+    else
+        status = "closed"
+        displayStatus = "Closed"
+    end
+    
+    return status, displayStatus, timeText
+end
+
 -- =============================================
---          REGION FILTERING FUNCTIONS (using HttpService)
+--          AIRDROP DETECTION
+-- =============================================
+local function checkAirdrops(jobId, loggedDrops, isSecondPass)
+    local webhook = getgenv().WebhookConfig.Webhooks.Airdrop
+    if not webhook or webhook == "" then
+        sendLog(LogLevel.WARNING, "Airdrop Webhook Missing", "No webhook.")
+        return loggedDrops
+    end
+    if getgenv().RobberyToggles and not getgenv().RobberyToggles.Airdrop then
+        return loggedDrops
+    end
+
+    local found = 0
+    local logged = 0
+    local candidates = {}
+
+    for _, drop in ipairs(workspace:GetChildren()) do
+        if drop.Name == "Drop" and drop:IsA("Model") then
+            table.insert(candidates, drop)
+        end
+    end
+
+    if #candidates == 0 then
+        if not isSecondPass then
+            sendLog(LogLevel.WARNING, "Airdrop Scan", "No 'Drop' models.")
+        end
+        return loggedDrops
+    end
+
+    for _, drop in ipairs(candidates) do
+        if loggedDrops[drop] then continue end
+        
+        found = found + 1
+        sendLog(LogLevel.INFO, "Airdrop Candidate", "Examining drop: " .. drop:GetFullName())
+
+        local wallPart = nil
+        local walls = drop:FindFirstChild("Walls") or drop:FindFirstChild("walls")
+        if walls then
+            wallPart = walls:FindFirstChild("Wall") or walls:FindFirstChild("wall") or walls:FindFirstChildWhichIsA("BasePart", true)
+        end
+        if not wallPart then
+            for _, child in ipairs(drop:GetChildren()) do
+                if child:IsA("BasePart") and child.Name:lower() == "wall" then
+                    wallPart = child
+                    break
+                end
+            end
+        end
+        if not wallPart then
+            local parts = {}
+            for _, d in ipairs(drop:GetDescendants()) do
+                if d:IsA("BasePart") then
+                    table.insert(parts, d)
+                end
+            end
+            if #parts == 1 then
+                wallPart = parts[1]
+            elseif #parts > 1 then
+                wallPart = parts[1]
+            end
+        end
+
+        if not wallPart then
+            sendLog(LogLevel.WARNING, "Airdrop — No Wall Part", "Skipping.")
+            continue
+        end
+
+        local col = wallPart.Color
+        local r,g,b = math.round(col.R*255), math.round(col.G*255), math.round(col.B*255)
+
+        local colorDef = matchAirdropColor(r,g,b)
+        if not colorDef then
+            sendLog(LogLevel.WARNING, "Airdrop — Unknown Color", string.format("RGB: %d,%d,%d",r,g,b))
+            continue
+        end
+
+        local npcs = drop:FindFirstChild("NPCs")
+        if npcs and #npcs:GetChildren() > 0 then
+            sendLog(LogLevel.INFO, "Airdrop — Opened", "Has NPCs, skipping.")
+            continue
+        end
+
+        local countdown = drop:FindFirstChild("Countdown")
+        local timerLabel, timerText = nil, nil
+
+        if countdown then
+            local billboard = countdown:FindFirstChildWhichIsA("BillboardGui", true)
+            if billboard then
+                timerLabel = billboard:FindFirstChildWhichIsA("TextLabel")
+            end
+            if timerLabel then
+                timerText = timerLabel.Text
+            end
+        end
+
+        if timerText then
+            local initial = timerText
+            task.wait(5)
+            local new = timerLabel and timerLabel.Text
+            if new and new ~= initial then
+                timerText = new
+            else
+                timerText = "Unopened"
+            end
+        else
+            timerText = "No timer"
+        end
+
+        local pos = getDropPosition(drop)
+        local locName = pos and getNearestLocation(pos) or "Unknown Location"
+
+        sendAirdropEmbed(webhook, drop, colorDef, locName, jobId, timerText, isSecondPass)
+        loggedDrops[drop] = true
+        logged = logged + 1
+
+        sendLog(LogLevel.SUCCESS, "Airdrop Logged", "Logged.", {
+            {name="Type",value=colorDef.label},
+            {name="Location",value=locName},
+            {name="Timer",value=timerText}
+        })
+    end
+
+    if found > 0 then
+        sendLog(LogLevel.INFO, "Airdrop Scan " .. (isSecondPass and "Second Pass" or "First Pass"), 
+            string.format("Found %d, Newly Logged %d", found, logged))
+    end
+    return loggedDrops
+end
+
+-- =============================================
+--          STORE SCAN (Two-pass system)
+-- =============================================
+local function scanStores(player, jobId, loggedStores, isSecondPass)
+    local pg = player and player:FindFirstChild("PlayerGui")
+    if not pg then
+        sendLog(LogLevel.ERROR, "Store Scan", "PlayerGui not found.")
+        return loggedStores
+    end
+    
+    local wm = pg:FindFirstChild("WorldMarkersGui")
+    if not wm then
+        sendLog(LogLevel.ERROR, "Store Scan", "WorldMarkersGui not found.")
+        return loggedStores
+    end
+
+    local openCount = 0
+    local robberyCount = 0
+    local closedCount = 0
+    local missedCount = 0
+
+    for storeName, iconId in pairs(getgenv().WebhookConfig.Icons) do
+        local display = formatName(storeName)
+        local found = false
+
+        for _, img in ipairs(wm:GetDescendants()) do
+            if img:IsA("ImageLabel") and img.Image == iconId then
+                found = true
+                local parent = img.Parent
+                if parent and parent:IsA("ImageLabel") then
+                    local col = parent.ImageColor3
+                    local r,g,b = math.round(col.R*255), math.round(col.G*255), math.round(col.B*255)
+                    local webhook = getgenv().WebhookConfig.Webhooks[storeName]
+                    
+                    local isOpen = (r==0 and g==255 and b==0)
+                    local isClosed = (r==255 and g==0 and b==0)
+                    local isRobbery = not isOpen and not isClosed
+
+                    if isOpen then
+                        openCount = openCount + 1
+                    elseif isClosed then
+                        closedCount = closedCount + 1
+                    else
+                        robberyCount = robberyCount + 1
+                    end
+
+                    -- Special handling for Crown Jewel
+                    if storeName == "Crown_Jewel" then
+                        if getgenv().RobberyToggles and not getgenv().RobberyToggles[storeName] then
+                            break
+                        end
+                        if not (isOpen or isRobbery) then
+                            break
+                        end
+
+                        -- Check if already logged
+                        if loggedStores[storeName] then break end
+
+                        local code = getCrownJewelCode() or "N/A"
+                        local now = os.time()
+                        local joinLink = getJoinLink(jobId)
+                        local tc = getTeamCounts()
+                        local crim = tc.Criminal
+                        local pol = tc.Police
+                        local pris = tc.Prisoner
+                        local crimAndPris = crim + pris
+                        local total = crimAndPris + pol
+                        local statusText = isOpen and "Open" or "Under Robbery"
+                        local title = display .. " is " .. string.lower(statusText) .. "."
+                        local playerList = getPlayerList()
+                        local passText = isSecondPass and " (Delayed)" or ""
+
+                        local roleId = getgenv().WebhookConfig.Roles["Crown_Jewel"]
+                        local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
+                        local imageUrl = getgenv().WebhookConfig.Images["Crown_Jewel"]
+
+                        local embed = {
+                            title = title .. passText,
+                            color = isOpen and 3066993 or 15105570,
+                            fields = {
+                                { name = "📍 Status",      value = statusText,          inline = true  },
+                                { name = "👥 Total Players", value = tostring(total),   inline = true  },
+                                { name = "👤 Players",      value = playerList,         inline = false },
+                                { name = "🔢 Code",        value = code,                inline = true  },
+                                { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
+                                { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
+                                { name = "🚔 Police",       value = tostring(pol),      inline = true  },
+                                { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
+                            },
+                            footer = { text = "Server ID: " .. jobId },
+                            timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+                        }
+
+                        if imageUrl then
+                            embed.image = { url = imageUrl }
+                        end
+
+                        local embedPayload = { embeds = { embed } }
+                        if roleMention then
+                            embedPayload.content = roleMention
+                        end
+
+                        local ok, encoded = pcall(function()
+                            return game:GetService("HttpService"):JSONEncode(embedPayload)
+                        end)
+                        if ok then
+                            pcall(function()
+                                request({ Url = webhook, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded })
+                            end)
+                            sendLog(LogLevel.SUCCESS, "Crown Jewel Logged", display .. " " .. statusText .. " — Code: " .. code, {
+                                { name = "Code", value = code, inline = true }
+                            })
+                            loggedStores[storeName] = true
+                        end
+
+                    -- Special handling for Mansion
+                    elseif storeName == "Mansion" then
+                        if getgenv().RobberyToggles and not getgenv().RobberyToggles.Mansion then
+                            break
+                        end
+                        
+                        -- Skip if already logged
+                        if loggedStores[storeName] then break end
+                        
+                        -- Mansion should never be logged if under robbery
+                        if isRobbery then
+                            sendLog(LogLevel.INFO, "Mansion Robbery Skipped", "Mansion is under robbery, not logging.")
+                            break
+                        end
+                        
+                        if not isOpen then
+                            break
+                        end
+
+                        local status, displayStatus, timeText = getMansionStatus()
+                        if not status then
+                            sendLog(LogLevel.WARNING, "Mansion Time Missing", "Could not determine mansion status.")
+                            break
+                        end
+
+                        -- Only log if it's actually open or opening soon/closing soon
+                        if status == "closed" then
+                            break
+                        end
+
+                        local now = os.time()
+                        local joinLink = getJoinLink(jobId)
+                        local tc = getTeamCounts()
+                        local crim = tc.Criminal
+                        local pol = tc.Police
+                        local pris = tc.Prisoner
+                        local crimAndPris = crim + pris
+                        local total = crimAndPris + pol
+                        local playerList = getPlayerList()
+                        local passText = isSecondPass and " (Delayed)" or ""
+
+                        local roleId = getgenv().WebhookConfig.Roles["Mansion"]
+                        local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
+                        local imageUrl = getgenv().WebhookConfig.Images["Mansion"]
+
+                        local embed = {
+                            title = "Mansion is " .. displayStatus .. "." .. passText,
+                            color = status == "open" and 3066993 or (status == "opening_soon" and 16753920 or 15158332),
+                            fields = {
+                                { name = "⏰ Game Time",   value = timeText,            inline = true },
+                                { name = "📍 Status",      value = displayStatus,       inline = true },
+                                { name = "👥 Total Players", value = tostring(total),   inline = true },
+                                { name = "👤 Players",      value = playerList,         inline = false },
+                                { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
+                                { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
+                                { name = "🚔 Police",       value = tostring(pol),      inline = true  },
+                                { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
+                            },
+                            footer = { text = "Server ID: " .. jobId },
+                            timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+                        }
+
+                        if imageUrl then
+                            embed.image = { url = imageUrl }
+                        end
+
+                        local embedPayload = { embeds = { embed } }
+                        if roleMention then
+                            embedPayload.content = roleMention
+                        end
+
+                        local ok, encoded = pcall(function()
+                            return game:GetService("HttpService"):JSONEncode(embedPayload)
+                        end)
+                        if ok then
+                            pcall(function()
+                                request({ Url = webhook, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded })
+                            end)
+                            sendLog(LogLevel.SUCCESS, "Mansion Logged", "Mansion " .. displayStatus .. " at " .. timeText, {
+                                { name = "Status", value = displayStatus, inline = true }
+                            })
+                            loggedStores[storeName] = true
+                        end
+
+                    -- Regular stores
+                    else
+                        -- Skip if already logged
+                        if loggedStores[storeName] then break end
+
+                        if isOpen then
+                            if webhook and webhook ~= "" then
+                                if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
+                                    sendDiscordEmbed(webhook, storeName, "open", jobId, isSecondPass)
+                                    sendLog(LogLevel.SUCCESS, "Store Open", display .. " open.", {{name="Store",value=display}})
+                                    loggedStores[storeName] = true
+                                else
+                                    sendLog(LogLevel.INFO, "Store Open — Toggled Off", display .. " open but disabled.")
+                                end
+                            else
+                                sendLog(LogLevel.WARNING, "Store Open — No Webhook", display .. " open but no webhook.")
+                            end
+                        elseif isRobbery then
+                            if storeName == "Cargo_Plane" then
+                                sendLog(LogLevel.INFO, "Cargo Plane Robbery Skipped", "Cargo Plane robbery not logged.")
+                            elseif webhook and webhook ~= "" then
+                                if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
+                                    sendDiscordEmbed(webhook, storeName, "robbery", jobId, isSecondPass)
+                                    sendLog(LogLevel.SUCCESS, "Robbery Logged", display .. " under robbery.", {{name="Store",value=display}})
+                                    loggedStores[storeName] = true
+                                else
+                                    sendLog(LogLevel.INFO, "Robbery — Toggled Off", display .. " robbery disabled.")
+                                end
+                            else
+                                sendLog(LogLevel.WARNING, "Robbery — No Webhook", display .. " robbery but no webhook.")
+                            end
+                        end
+                    end
+                else
+                    missedCount = missedCount + 1
+                end
+                break
+            end
+        end
+
+        if not found then
+            missedCount = missedCount + 1
+        end
+    end
+
+    local passName = isSecondPass and "Second Pass" or "First Pass"
+    sendLog(LogLevel.INFO, "Store Scan " .. passName, "Completed.", {
+        {name="✅ Open",value=openCount},
+        {name="🔴 Robbery",value=robberyCount},
+        {name="⚫ Closed",value=closedCount},
+        {name="⚠️ Missed",value=missedCount}
+    })
+    
+    return loggedStores
+end
+
+-- =============================================
+--          SERVER HOP LOGIC
 -- =============================================
 local function getServerIP(placeId, serverId)
     local success, response = pcall(function()
@@ -518,431 +994,6 @@ local function getServerRegion(placeId, serverId)
     return region
 end
 
--- =============================================
---          AIRDROP DETECTION (with 5‑second check)
--- =============================================
-local function checkAirdrops(jobId)
-    local webhook = getgenv().WebhookConfig.Webhooks.Airdrop
-    if not webhook or webhook == "" then
-        sendLog(LogLevel.WARNING, "Airdrop Webhook Missing", "Airdrop webhook URL has not been configured.")
-        return
-    end
-    if getgenv().RobberyToggles and not getgenv().RobberyToggles.Airdrop then
-        return
-    end
-
-    local dropsFound = 0
-    local dropsLogged = 0
-    local candidates = {}
-
-    for _, drop in ipairs(workspace:GetChildren()) do
-        if drop.Name == "Drop" and drop:IsA("Model") then
-            table.insert(candidates, drop)
-        end
-    end
-
-    if #candidates == 0 then
-        sendLog(LogLevel.WARNING, "Airdrop Scan", "No models named 'Drop' found in workspace.")
-        return
-    end
-
-    for _, drop in ipairs(candidates) do
-        dropsFound = dropsFound + 1
-        sendLog(LogLevel.INFO, "Airdrop Candidate", "Examining drop: " .. drop:GetFullName())
-
-        local wallPart = nil
-        local wallsFolder = drop:FindFirstChild("Walls") or drop:FindFirstChild("walls")
-        if wallsFolder then
-            wallPart = wallsFolder:FindFirstChild("Wall") or wallsFolder:FindFirstChild("wall")
-            if not wallPart then
-                wallPart = wallsFolder:FindFirstChildWhichIsA("BasePart", true)
-            end
-        end
-        if not wallPart then
-            for _, child in ipairs(drop:GetChildren()) do
-                if child:IsA("BasePart") and child.Name:lower() == "wall" then
-                    wallPart = child
-                    break
-                end
-            end
-        end
-        if not wallPart then
-            local parts = {}
-            for _, desc in ipairs(drop:GetDescendants()) do
-                if desc:IsA("BasePart") then
-                    table.insert(parts, desc)
-                end
-            end
-            if #parts == 1 then
-                wallPart = parts[1]
-            elseif #parts > 1 then
-                local partNames = {}
-                for _, p in ipairs(parts) do
-                    table.insert(partNames, p.Name)
-                end
-                sendLog(LogLevel.WARNING, "Airdrop — Multiple Parts", "Drop has multiple BaseParts, using first as wall.", {
-                    { name = "Parts", value = table.concat(partNames, ", "), inline = false }
-                })
-                wallPart = parts[1]
-            else
-                sendLog(LogLevel.WARNING, "Airdrop — No BaseParts", "Drop model contains no BasePart descendants.")
-                wallPart = nil
-            end
-        end
-
-        if not wallPart then
-            sendLog(LogLevel.WARNING, "Airdrop — No Wall Part", "Could not identify any wall part; skipping drop.")
-            continue
-        end
-
-        local col = wallPart.Color
-        local r = math.round(col.R * 255)
-        local g = math.round(col.G * 255)
-        local b = math.round(col.B * 255)
-
-        local colorDef = matchAirdropColor(r, g, b)
-        if not colorDef then
-            sendLog(LogLevel.WARNING, "Airdrop — Unknown Color", "Could not match drop color.", {
-                { name = "RGB",  value = r .. ", " .. g .. ", " .. b, inline = true },
-                { name = "Drop", value = drop:GetFullName(),          inline = true },
-            })
-            continue
-        end
-
-        local npcsFolder = drop:FindFirstChild("NPCs")
-        local hasNPCs = false
-        if npcsFolder then
-            hasNPCs = #npcsFolder:GetChildren() > 0
-        end
-        if hasNPCs then
-            sendLog(LogLevel.INFO, "Airdrop — Opened", "Drop has NPCs, not logging.")
-            continue
-        end
-
-        local countdownFolder = drop:FindFirstChild("Countdown")
-        local timerLabel = nil
-        local timerText = nil
-
-        if countdownFolder then
-            local billboard = countdownFolder:FindFirstChildWhichIsA("BillboardGui", true)
-            if billboard then
-                timerLabel = billboard:FindFirstChildWhichIsA("TextLabel")
-                if timerLabel then
-                    timerText = timerLabel.Text
-                end
-            end
-        end
-
-        if timerText then
-            local initialTimer = timerText
-            task.wait(5)
-            local newTimer = timerLabel and timerLabel.Text
-            if newTimer and newTimer ~= initialTimer then
-                timerText = newTimer
-            else
-                timerText = "Unopened"
-            end
-        else
-            timerText = "No timer"
-        end
-
-        local dropPos = getDropPosition(drop)
-        local locationName = dropPos and getNearestLocation(dropPos) or "Unknown Location"
-
-        sendAirdropEmbed(webhook, drop, colorDef, locationName, jobId, timerText)
-        dropsLogged = dropsLogged + 1
-
-        sendLog(LogLevel.SUCCESS, "Airdrop Logged", "Unopened airdrop logged.", {
-            { name = "🎨 Type",     value = colorDef.label, inline = true },
-            { name = "📍 Location", value = locationName,   inline = true },
-            { name = "⏳ Timer",    value = timerText,       inline = true },
-        })
-    end
-
-    sendLog(LogLevel.INFO, "Airdrop Scan Complete", "Finished scanning for airdrops.", {
-        { name = "Found",  value = tostring(dropsFound),  inline = true },
-        { name = "Logged", value = tostring(dropsLogged), inline = true },
-    })
-end
-
--- =============================================
---          STORE SCAN (with Cargo Plane skip & s5nni ignore)
--- =============================================
-local function checkForOpenStores(player)
-    local playerGui = player and player:FindFirstChild("PlayerGui")
-    if not playerGui then
-        sendLog(LogLevel.ERROR, "Store Scan Failed", "PlayerGui not found on player.")
-        return
-    end
-
-    local worldMarkers = playerGui:FindFirstChild("WorldMarkersGui")
-    if not worldMarkers then
-        sendLog(LogLevel.ERROR, "Store Scan Failed", "WorldMarkersGui not found in PlayerGui.")
-        return
-    end
-
-    local jobId = game.JobId
-    local openCount = 0
-    local robberyCount = 0
-    local closedCount = 0
-    local missedCount = 0
-    local skippedCount = 0
-
-    sendLog(LogLevel.INFO, "Store Scan Started", "Beginning robbery/store status scan.")
-
-    for storeName, iconAssetId in pairs(getgenv().WebhookConfig.Icons) do
-        local displayName = formatName(storeName)
-        local found = false
-
-        for _, imageLabel in ipairs(worldMarkers:GetDescendants()) do
-            if imageLabel:IsA("ImageLabel") and imageLabel.Image == iconAssetId then
-                found = true
-                local parent = imageLabel.Parent
-                if parent and parent:IsA("ImageLabel") then
-                    local col = parent.ImageColor3
-                    local r = math.round(col.R * 255)
-                    local g = math.round(col.G * 255)
-                    local b = math.round(col.B * 255)
-                    local webhook = getgenv().WebhookConfig.Webhooks[storeName]
-
-                    local isOpen = (r == 0 and g == 255 and b == 0)
-                    local isClosed = (r == 255 and g == 0 and b == 0)
-                    local isRobbery = not isOpen and not isClosed
-
-                    if isOpen then
-                        openCount = openCount + 1
-                    elseif isClosed then
-                        closedCount = closedCount + 1
-                    else
-                        robberyCount = robberyCount + 1
-                    end
-
-                    if storeName == "Crown_Jewel" then
-                        if getgenv().RobberyToggles and not getgenv().RobberyToggles[storeName] then
-                            skippedCount = skippedCount + 1
-                            break
-                        end
-                        if not (isOpen or isRobbery) then
-                            break
-                        end
-
-                        local code = getCrownJewelCode() or "N/A"
-                        local now = os.time()
-                        local joinLink = getJoinLink(jobId)
-                        local teamCounts = getTeamCounts()
-                        local criminals = teamCounts.Criminal
-                        local police = teamCounts.Police
-                        local prisoners = teamCounts.Prisoner
-                        local crimAndPris = criminals + prisoners
-                        local totalPlayers = crimAndPris + police
-                        local statusText = isOpen and "Open" or "Under Robbery"
-                        local title = displayName .. " is " .. string.lower(statusText) .. "."
-
-                        local roleId = getgenv().WebhookConfig.Roles["Crown_Jewel"]
-                        local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
-
-                        local imageUrl = getgenv().WebhookConfig.Images["Crown_Jewel"]
-
-                        local embed = {
-                            title = title,
-                            color = isOpen and 3066993 or 15105570,
-                            fields = {
-                                { name = "📍 Status",      value = statusText,          inline = true  },
-                                { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
-                                { name = "🔢 Code",        value = code,                 inline = true  },
-                                { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
-                                { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
-                                { name = "🚔 Police",       value = tostring(police),    inline = true  },
-                                { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
-                            },
-                            footer = { text = "Server ID: " .. jobId },
-                            timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-                        }
-
-                        if imageUrl then
-                            embed.image = { url = imageUrl }
-                        end
-
-                        local embedPayload = { embeds = { embed } }
-                        if roleMention then
-                            embedPayload.content = roleMention
-                        end
-
-                        local ok, encoded = pcall(function()
-                            return game:GetService("HttpService"):JSONEncode(embedPayload)
-                        end)
-                        if ok then
-                            pcall(function()
-                                request({ Url = webhook, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded })
-                            end)
-                            sendLog(LogLevel.SUCCESS, "Crown Jewel Logged", displayName .. " " .. statusText .. " — Code: " .. code, {
-                                { name = "Code", value = code, inline = true }
-                            })
-                        end
-
-                    elseif storeName == "Mansion" then
-                        if getgenv().RobberyToggles and not getgenv().RobberyToggles.Mansion then
-                            skippedCount = skippedCount + 1
-                            break
-                        end
-                        if not isOpen then
-                            break
-                        end
-                        local timeText = getGameTimeText()
-                        if not timeText then
-                            sendLog(LogLevel.WARNING, "Mansion Time Missing", "Could not read game time; mansion log skipped.")
-                            break
-                        end
-                        local hour, minute, period = parseGameTime(timeText)
-                        if not hour then
-                            sendLog(LogLevel.WARNING, "Mansion Time Parse Failed", "Failed to parse time: " .. timeText)
-                            break
-                        end
-                        if period == "AM" and hour >= 3 then
-                            sendLog(LogLevel.INFO, "Mansion Skipped", "Time is " .. timeText .. " – mansion not logged.")
-                            skippedCount = skippedCount + 1
-                            break
-                        end
-                        local timeStatus
-                        local timeColor
-                        if hour >= 18 then
-                            timeStatus = "Open"
-                            timeColor = 3066993
-                        elseif hour >= 16 then
-                            timeStatus = "Opening Soon"
-                            timeColor = 16753920
-                        elseif hour == 0 then
-                            timeStatus = "Closing Soon"
-                            timeColor = 15158332
-                        elseif hour < 3 and period == "AM" then
-                            timeStatus = "Closing Soon"
-                            timeColor = 15158332
-                        else
-                            timeStatus = "Unknown"
-                            timeColor = 5793266
-                        end
-
-                        local roleId = getgenv().WebhookConfig.Roles["Mansion"]
-                        local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
-                        local now = os.time()
-                        local joinLink = getJoinLink(jobId)
-                        local teamCounts = getTeamCounts()
-                        local criminals = teamCounts.Criminal
-                        local police = teamCounts.Police
-                        local prisoners = teamCounts.Prisoner
-                        local crimAndPris = criminals + prisoners
-                        local totalPlayers = crimAndPris + police
-
-                        local imageUrl = getgenv().WebhookConfig.Images["Mansion"]
-
-                        local embed = {
-                            title = "Mansion is " .. timeStatus .. ".",
-                            color = timeColor,
-                            fields = {
-                                { name = "⏰ Game Time",   value = timeText,                     inline = true },
-                                { name = "📍 Status",      value = "Open",                       inline = true },
-                                { name = "👥 Total Players", value = tostring(totalPlayers),       inline = true },
-                                { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
-                                { name = "🏃 Criminals",    value = tostring(crimAndPris),        inline = true },
-                                { name = "🚔 Police",       value = tostring(police),             inline = true },
-                                { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>",        inline = true },
-                            },
-                            footer = { text = "Server ID: " .. jobId },
-                            timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-                        }
-
-                        if imageUrl then
-                            embed.image = { url = imageUrl }
-                        end
-
-                        local embedPayload = { embeds = { embed } }
-                        if roleMention then
-                            embedPayload.content = roleMention
-                        end
-
-                        local ok, encoded = pcall(function()
-                            return game:GetService("HttpService"):JSONEncode(embedPayload)
-                        end)
-                        if ok then
-                            pcall(function()
-                                request({ Url = webhook, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded })
-                            end)
-                            sendLog(LogLevel.SUCCESS, "Mansion Logged", "Mansion " .. timeStatus .. " at " .. timeText, {
-                                { name = "Time Status", value = timeStatus, inline = true }
-                            })
-                        end
-
-                    else
-                        if isOpen then
-                            if webhook and webhook ~= "" then
-                                if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
-                                    sendDiscordEmbed(webhook, storeName, "open", jobId)
-                                    sendLog(LogLevel.SUCCESS, "Store Open", displayName .. " is open — embed sent.", {
-                                        { name = "Store", value = displayName, inline = true }
-                                    })
-                                else
-                                    skippedCount = skippedCount + 1
-                                    sendLog(LogLevel.INFO, "Store Open — Toggled Off", displayName .. " is open but logging is disabled.", {
-                                        { name = "Store", value = displayName, inline = true }
-                                    })
-                                end
-                            else
-                                sendLog(LogLevel.WARNING, "Store Open — No Webhook", displayName .. " is open but has no webhook configured.", {
-                                    { name = "Store", value = displayName, inline = true }
-                                })
-                            end
-                        elseif isRobbery then
-                            if storeName == "Cargo_Plane" then
-                                sendLog(LogLevel.INFO, "Cargo Plane Robbery Skipped", "Cargo Plane is under robbery, not logging to webhook.")
-                            elseif webhook and webhook ~= "" then
-                                if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
-                                    sendDiscordEmbed(webhook, storeName, "robbery", jobId)
-                                    sendLog(LogLevel.SUCCESS, "Robbery Logged", displayName .. " is under robbery — embed sent.", {
-                                        { name = "Store", value = displayName, inline = true }
-                                    })
-                                else
-                                    skippedCount = skippedCount + 1
-                                    sendLog(LogLevel.INFO, "Robbery — Toggled Off", displayName .. " is under robbery but logging is disabled.", {
-                                        { name = "Store", value = displayName, inline = true }
-                                    })
-                                end
-                            else
-                                sendLog(LogLevel.WARNING, "Robbery — No Webhook", displayName .. " is under robbery but has no webhook.", {
-                                    { name = "Store", value = displayName, inline = true }
-                                })
-                            end
-                        end
-                    end
-                else
-                    missedCount = missedCount + 1
-                    sendLog(LogLevel.WARNING, "Store — Unexpected Parent", "Icon parent was not an ImageLabel for " .. displayName .. ".", {
-                        { name = "Store", value = displayName, inline = true }
-                    })
-                end
-                break
-            end
-        end
-
-        if not found then
-            missedCount = missedCount + 1
-            sendLog(LogLevel.WARNING, "Store Icon Missing", "Could not find icon in WorldMarkersGui for " .. displayName .. ".", {
-                { name = "Store", value = displayName, inline = true }
-            })
-        end
-    end
-
-    sendLog(LogLevel.INFO, "Store Scan Complete", "Finished scanning all stores.", {
-        { name = "✅ Open",    value = tostring(openCount),    inline = true },
-        { name = "🔴 Robbery", value = tostring(robberyCount), inline = true },
-        { name = "⚫ Closed",  value = tostring(closedCount),  inline = true },
-        { name = "⚠️ Missed",  value = tostring(missedCount),  inline = true },
-        { name = "⏭️ Skipped", value = tostring(skippedCount), inline = true },
-    })
-end
-
--- =============================================
---          SERVER HOP LOGIC (restored from old code)
--- =============================================
 local function getTargetServer(placeId, currentJobId)
     local allServers = {}
     local cursor = nil
@@ -977,8 +1028,7 @@ local function getTargetServer(placeId, currentJobId)
     until not cursor
 
     if #allServers == 0 then
-        sendLog(LogLevel.WARNING, "No Valid Servers", "No servers found under player limit. Clearing visited list and retrying.")
-        getgenv().VisitedServers = {}
+        sendLog(LogLevel.WARNING, "No Valid Servers", "No servers found under player limit.")
         return nil
     end
 
@@ -1027,7 +1077,10 @@ local function hopToNewServer(player)
 
     local placeId = game.PlaceId
     local oldJobId = game.JobId
-    getgenv().VisitedServers[oldJobId] = true
+    local visited = loadVisitedServers()
+    visited[oldJobId] = os.time()
+    saveVisitedServers(visited)
+    getgenv().VisitedServers = visited
 
     local targetJobId = getTargetServer(placeId, oldJobId)
     local TeleportService = game:GetService("TeleportService")
@@ -1086,10 +1139,27 @@ pcall(function()
         { name = "Server ID", value = currentJobId, inline = false }
     })
 
+    -- Check for s5nni players immediately
     if hasS5nniPlayer() then
         sendLog(LogLevel.INFO, "S5nni Player Detected", "Hopping to another server without scanning.")
         hopToNewServer(player)
         return
+    end
+
+    -- Check if this server was recently visited
+    local visited = loadVisitedServers()
+    if visited[currentJobId] then
+        local timeSince = os.time() - visited[currentJobId]
+        if timeSince < 300 then -- 5 minutes
+            sendLog(LogLevel.INFO, "Server Recently Visited", 
+                string.format("This server was visited %d seconds ago. Hopping immediately.", timeSince))
+            hopToNewServer(player)
+            return
+        else
+            -- Remove old entry
+            visited[currentJobId] = nil
+            saveVisitedServers(visited)
+        end
     end
 
     if getgenv().ServerId == currentJobId then
@@ -1102,8 +1172,23 @@ pcall(function()
 
     getgenv().ServerId = currentJobId
 
-    checkForOpenStores(player)
-    checkAirdrops(currentJobId)
+    -- First pass: log open stores immediately
+    sendLog(LogLevel.INFO, "First Pass Started", "Scanning for open stores...")
+    local loggedStores = {}
+    local loggedDrops = {}
+    
+    loggedStores = scanStores(player, currentJobId, loggedStores, false)
+    loggedDrops = checkAirdrops(currentJobId, loggedDrops, false)
+
+    -- Wait 15 seconds
+    sendLog(LogLevel.INFO, "Waiting Period", "Waiting 15 seconds for robberies to start...")
+    task.wait(15)
+
+    -- Second pass: log any new robberies or airdrops
+    sendLog(LogLevel.INFO, "Second Pass Started", "Scanning for robberies that started during wait...")
+    updateLocationPositions() -- Refresh location data
+    loggedStores = scanStores(player, currentJobId, loggedStores, true)
+    loggedDrops = checkAirdrops(currentJobId, loggedDrops, true)
 
     getgenv().IsFinished = true
     sendLog(LogLevel.SUCCESS, "Cycle Complete", "All scans finished. IsFinished set. Hopping in 2 seconds.")
