@@ -377,21 +377,28 @@ local function sendPlaneEmbed(webhookUrl, jobId, isSecondPass)
     local roleId = getgenv().WebhookConfig.Roles["Cargo_Plane"]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = getgenv().WebhookConfig.Images["Cargo_Plane"]
+
+    local eta = getPlaneETA()  -- this function must be defined earlier
+    local fields = {
+        { name = "👥 Total Players", value = tostring(totalPlayers), inline = true },
+        { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
+        { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
+        { name = "🚔 Police",       value = tostring(police),    inline = true  },
+        { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
+    }
+    if eta then
+        table.insert(fields, 1, { name = "✈️ Arrives in", value = "<t:" .. (now + eta) .. ":R>", inline = true })
+    end
+
     local embed = {
-        title = "✈️ Cargo Plane Approaching!" .. passText,
+        title = "Cargo Plane Approaching!" .. passText,
         color = 3447003,
-        fields = {
-            { name = "📍 Status",      value = "On approach", inline = true  },
-            { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
-            { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
-            { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
-            { name = "🚔 Police",       value = tostring(police),    inline = true  },
-            { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
-        },
+        fields = fields,
         footer = { text = "Leaf Logger " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
+
     local embedPayload = { embeds = { embed } }
     if roleMention then embedPayload.content = roleMention end
     local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
@@ -412,22 +419,25 @@ local function sendTrainEmbed(webhookUrl, trainType, timeRemaining, jobId, isSec
     local roleId = getgenv().WebhookConfig.Roles[roleKey]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = getgenv().WebhookConfig.Images[roleKey]
+
+    local fields = {
+        { name = "⏳ Closes in",    value = "<t:" .. (now + timeRemaining) .. ":R>", inline = true },
+        { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
+        { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
+        { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
+        { name = "🚔 Police",       value = tostring(police),    inline = true  },
+        { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
+    }
+
     local embed = {
         title = (trainType == "cargo" and "🚂 Cargo Train Active!" or "🚆 Passenger Train Active!") .. passText,
         color = trainType == "cargo" and 15105570 or 3066993,
-        fields = {
-            { name = "📍 Status",      value = "Moving", inline = true  },
-            { name = "⏳ ETA to End",  value = "<t:" .. (now + timeRemaining) .. ":R>", inline = true },
-            { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
-            { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
-            { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
-            { name = "🚔 Police",       value = tostring(police),    inline = true  },
-            { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
-        },
+        fields = fields,
         footer = { text = "Leaf Logger " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
+
     local embedPayload = { embeds = { embed } }
     if roleMention then embedPayload.content = roleMention end
     local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
@@ -622,7 +632,7 @@ local function scanStores(player, jobId, loggedStores, isSecondPass)
                             { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
                         }
                         if timer then
-                            table.insert(fields, 4, { name = "⏳ Time Left", value = "<t:" .. (now + timer) .. ":R>", inline = true })
+                            table.insert(fields, 4, { name = "⏳ Closes in", value = "<t:" .. (now + timer) .. ":R>", inline = true })
                         end
                         local embed = {
                             title = title .. passText,
