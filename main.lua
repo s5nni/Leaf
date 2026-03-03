@@ -302,7 +302,7 @@ local function sendDiscordEmbed(webhookUrl, storeName, status, jobId, isSecondPa
     local statusText = isOpen and "Open" or "Under Robbery"
     local displayName = formatName(storeName)
     local title = displayName .. " is " .. string.lower(statusText) .. "."
-    local passText = isSecondPass and " (Delayed)" or ""
+    local passText = isSecondPass and "" or ""
     local roleId = getgenv().WebhookConfig.Roles[storeName]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = getgenv().WebhookConfig.Images[storeName]
@@ -344,7 +344,7 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
     local prisoners = teamCounts.Prisoner
     local crimAndPris = criminals + prisoners
     local totalPlayers = crimAndPris + police
-    local passText = isSecondPass and " (Delayed)" or ""
+    local passText = isSecondPass and "" or ""
     local roleKey = colorDef.label:match("🔴") and "RedAirdrop" or
                     colorDef.label:match("🟤") and "BrownAirdrop" or
                     colorDef.label:match("🔵") and "BlueAirdrop" or nil
