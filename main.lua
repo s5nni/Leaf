@@ -981,7 +981,7 @@ local function checkForOpenStores(player)
 end
 
 -- =============================================
---          SERVER HOP LOGIC (WITH REGION FILTER)
+--          SERVER HOP LOGIC (WITH TIMEOUT & AUTO-RETRY)
 -- =============================================
 
 local function getTargetServer(placeId, currentJobId)
@@ -1050,11 +1050,18 @@ local function getTargetServer(placeId, currentJobId)
 end
 
 local function hopToNewServer(player)
-    local placeId = game.PlaceId
-    local currentJobId = game.JobId
-    getgenv().VisitedServers[currentJobId] = true
+    -- Prevent overlapping teleport attempts
+    if getgenv().TeleportInProgress then
+        sendLog(LogLevel.WARNING, "Teleport Already in Progress", "Skipping duplicate teleport request.")
+        return
+    end
+    getgenv().TeleportInProgress = true
 
-    local targetJobId = getTargetServer(placeId, currentJobId)
+    local placeId = game.PlaceId
+    local oldJobId = game.JobId
+    getgenv().VisitedServers[oldJobId] = true
+
+    local targetJobId = getTargetServer(placeId, oldJobId)
     local TeleportService = game:GetService("TeleportService")
 
     pcall(function() clear_teleport_queue() end)
@@ -1064,17 +1071,39 @@ local function hopToNewServer(player)
         sendLog(LogLevel.HOP, "Teleporting", "Attempting teleport to target server.", {
             { name = "Target", value = targetJobId, inline = false }
         })
-        local ok, err = pcall(function()
+
+        -- Start the teleport
+        local success, err = pcall(function()
             TeleportService:TeleportToPlaceInstance(placeId, targetJobId, player)
         end)
-        if not ok then
+
+        if not success then
             sendLog(LogLevel.ERROR, "Teleport Failed", "TeleportToPlaceInstance failed. Falling back to random server.", {
                 { name = "Error", value = tostring(err), inline = false }
             })
+            getgenv().TeleportInProgress = false
             pcall(function() TeleportService:Teleport(placeId, player) end)
+            return
         end
+
+        -- Start a timeout coroutine to detect stuck teleport
+        task.spawn(function()
+            task.wait(30)  -- Wait 30 seconds
+
+            -- If we are still in the same server, assume the teleport is stuck
+            if game.JobId == oldJobId then
+                sendLog(LogLevel.WARNING, "Teleport Stuck", "No server change after 30 seconds. Re‑attempting hop.")
+                getgenv().TeleportInProgress = false
+                hopToNewServer(player)  -- Try again
+            else
+                -- Teleport succeeded; flag will be cleared in new server if needed
+                getgenv().TeleportInProgress = false
+            end
+        end)
+
     else
         sendLog(LogLevel.WARNING, "No Target Server", "No valid server found. Falling back to random server teleport.")
+        getgenv().TeleportInProgress = false
         pcall(function() TeleportService:Teleport(placeId, player) end)
     end
 end
