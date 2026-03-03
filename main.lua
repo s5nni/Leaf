@@ -923,7 +923,7 @@ pcall(function()
         { name = "Server ID", value = currentJobId, inline = false }
     })
     if hasS5nniPlayer() then
-        sendLog(LogLevel.INFO, "S5nni Player Detected", "Hopping to another server without scanning.")
+        sendLog(LogLevel.INFO, "Leaf Bot Detected", "Hopping to another server without scanning.")
         hopToNewServer(player)
         return
     end
