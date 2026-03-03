@@ -1,6 +1,7 @@
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/webhook.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/whitelist.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/robberies.lua"))()
+local ServerHop = loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/serverhop.lua"))()
 
 if not getgenv().VisitedServers then
     getgenv().VisitedServers = {}
@@ -54,8 +55,6 @@ local AIRDROP_LOCATIONS = {
         end
     },
 }
-
-local MAX_PLAYERS = 5
 
 local LogLevel = {
     INFO    = { label = "ℹ️ Info",       color = 5793266  },
@@ -202,23 +201,6 @@ local function getNearestLocation(pos)
 end
 
 -- =============================================
---          TELEPORT HELPER
--- =============================================
-local function teleportTo(position)
-    local player = game:GetService("Players").LocalPlayer
-    if not player then return end
-    local character = player.Character
-    if not character then
-        player.CharacterAdded:Wait()
-        character = player.Character
-    end
-    local hrp = character:FindFirstChild("HumanoidRootPart")
-    if hrp then
-        hrp.CFrame = CFrame.new(position)
-    end
-end
-
--- =============================================
 --          CROWN JEWEL CODE READER
 -- =============================================
 
@@ -321,7 +303,7 @@ local function getCrownJewelCode()
 end
 
 -- =============================================
---          DISCORD EMBED FUNCTIONS (with updated titles)
+--          DISCORD EMBED FUNCTIONS (with thumbnail)
 -- =============================================
 
 local function sendDiscordEmbed(webhookUrl, storeName, status, jobId)
@@ -336,8 +318,7 @@ local function sendDiscordEmbed(webhookUrl, storeName, status, jobId)
     local isOpen = status == "open"
     local color = isOpen and 3066993 or 15105570
     local statusText = isOpen and "Open" or "Under Robbery"
-    local displayName = formatName(storeName)
-    local title = displayName .. " is " .. string.lower(statusText) .. "."
+    local title = isOpen and storeName .. " is Open!" or storeName .. " is Under Robbery!"
 
     local roleId = getgenv().WebhookConfig.Roles[storeName]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
@@ -460,69 +441,6 @@ local function parseGameTime(timeStr)
 end
 
 -- =============================================
---          REGION FILTERING FUNCTIONS
--- =============================================
-
-local function getServerIP(placeId, serverId)
-    local success, response = pcall(function()
-        return request({
-            Url = "https://gamejoin.roblox.com/v1/join-game-instance",
-            Method = "POST",
-            Headers = {
-                ["Content-Type"] = "application/json",
-                ["User-Agent"] = "Roblox/WinInet"
-            },
-            Body = game:GetService("HttpService"):JSONEncode({
-                placeId = placeId,
-                gameId = serverId,
-                isTeleport = false,
-                gameJoinAttemptId = serverId
-            })
-        })
-    end)
-    if not success then return nil end
-    if response.StatusCode ~= 200 then return nil end
-    local ok, data = pcall(function()
-        return game:GetService("HttpService"):JSONDecode(response.Body)
-    end)
-    if not ok then return nil end
-    if data.joinScript and data.joinScript.MachineAddress then
-        return data.joinScript.MachineAddress
-    end
-    if data.joinScript and data.joinScript.UdmuxEndpoints and #data.joinScript.UdmuxEndpoints > 0 then
-        return data.joinScript.UdmuxEndpoints[1].Address
-    end
-    return nil
-end
-
-local function isUSAServer(ipAddress)
-    local usaPrefixes = {
-        "104.", "128.116.", "162.", "199.", "66.", "72.", "192.",
-    }
-    for _, prefix in ipairs(usaPrefixes) do
-        if ipAddress:sub(1, #prefix) == prefix then
-            return true
-        end
-    end
-    return false
-end
-
-local function getServerRegion(placeId, serverId)
-    local cache = getgenv().ServerRegionCache
-    if cache[serverId] then
-        return cache[serverId]
-    end
-    local ip = getServerIP(placeId, serverId)
-    if not ip then
-        cache[serverId] = "unknown"
-        return "unknown"
-    end
-    local region = isUSAServer(ip) and "US" or "other"
-    cache[serverId] = region
-    return region
-end
-
--- =============================================
 --          UPDATED AIRDROP DETECTION
 -- =============================================
 
@@ -626,7 +544,7 @@ local function checkAirdrops(jobId)
             continue
         end
 
-        -- -------------------- COUNTDOWN TIMER --------------------
+        -- -------------------- COUNTDOWN TIMER (IMPROVED) --------------------
         local countdownFolder = drop:FindFirstChild("Countdown")
         local timerLabel = nil
         local timerText = nil
@@ -642,12 +560,13 @@ local function checkAirdrops(jobId)
         end
 
         if timerText then
-            task.wait(3)
-            local newText = timerLabel and timerLabel.Text
-            if newText ~= timerText then
-                timerText = newText
+            local initialTimer = timerText
+            task.wait(5)
+            local newTimer = timerLabel and timerLabel.Text
+            if newTimer and newTimer ~= initialTimer then
+                timerText = newTimer  -- timer changed, show actual countdown
             else
-                -- Timer unchanged – keep original
+                timerText = "Unopened"  -- timer unchanged or missing
             end
         else
             timerText = "No timer"
@@ -674,7 +593,7 @@ local function checkAirdrops(jobId)
 end
 
 -- =============================================
---          STORE SCAN (WITH MANSION & CROWN JEWEL & TELEPORT)
+--          STORE SCAN (WITH MANSION & CROWN JEWEL)
 -- =============================================
 
 local function checkForOpenStores(player)
@@ -727,30 +646,6 @@ local function checkForOpenStores(player)
                     end
 
                     -- =========================================
-                    --          TELEPORT FOR OPEN CROWN JEWEL / TOMB
-                    -- =========================================
-                    if isOpen then
-                        if storeName == "Crown_Jewel" then
-                            local casino = workspace:FindFirstChild("Casino")
-                            if casino then
-                                local pos = casino:GetModelCFrame().Position
-                                teleportTo(pos)
-                                sendLog(LogLevel.INFO, "Teleported to Casino", "Moved to render Crown Jewel area.")
-                            end
-                        elseif storeName == "Tomb" then
-                            local tomb = workspace:FindFirstChild("RobberyTomb")
-                            if tomb then
-                                local inner = tomb:FindFirstChild("Tomb")
-                                if inner then
-                                    local pos = inner:GetModelCFrame().Position
-                                    teleportTo(pos)
-                                    sendLog(LogLevel.INFO, "Teleported to Tomb", "Moved to render Tomb area.")
-                                end
-                            end
-                        end
-                    end
-
-                    -- =========================================
                     --          CROWN JEWEL (with code)
                     -- =========================================
                     if storeName == "Crown_Jewel" then
@@ -772,7 +667,7 @@ local function checkForOpenStores(player)
                         local crimAndPris = criminals + prisoners
                         local totalPlayers = crimAndPris + police
                         local statusText = isOpen and "Open" or "Under Robbery"
-                        local title = displayName .. " is " .. string.lower(statusText) .. "."
+                        local title = isOpen and "Crown Jewel is Open!" or "Crown Jewel is Under Robbery!"
 
                         local roleId = getgenv().WebhookConfig.Roles["Crown_Jewel"]
                         local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
@@ -848,7 +743,7 @@ local function checkForOpenStores(player)
                             timeStatus = "Open"
                             timeColor = 3066993
                         elseif hour >= 16 then
-                            timeStatus = "Opening Soon"
+                            timeStatus = "Ready to Open"
                             timeColor = 16753920
                         elseif hour == 0 then
                             timeStatus = "Closing Soon"
@@ -875,7 +770,7 @@ local function checkForOpenStores(player)
                         local imageUrl = getgenv().WebhookConfig.Images["Mansion"]
 
                         local embed = {
-                            title = "Mansion is " .. timeStatus .. ".",
+                            title = "🏰 Mansion is Open (" .. timeStatus .. ")",
                             color = timeColor,
                             fields = {
                                 { name = "⏰ Game Time",   value = timeText,                     inline = true },
@@ -906,13 +801,13 @@ local function checkForOpenStores(player)
                             pcall(function()
                                 request({ Url = webhook, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded })
                             end)
-                            sendLog(LogLevel.SUCCESS, "Mansion Logged", "Mansion " .. timeStatus .. " at " .. timeText, {
+                            sendLog(LogLevel.SUCCESS, "Mansion Logged", "Mansion Open at " .. timeText, {
                                 { name = "Time Status", value = timeStatus, inline = true }
                             })
                         end
 
                     -- =========================================
-                    --          ALL OTHER STORES
+                    --          ALL OTHER STORES (including Cargo Plane fix)
                     -- =========================================
                     else
                         if isOpen then
@@ -934,7 +829,10 @@ local function checkForOpenStores(player)
                                 })
                             end
                         elseif isRobbery then
-                            if webhook and webhook ~= "" then
+                            -- Skip Cargo Plane robberies
+                            if storeName == "Cargo_Plane" then
+                                sendLog(LogLevel.INFO, "Cargo Plane Robbery Skipped", "Cargo Plane is under robbery, not logging to webhook.")
+                            elseif webhook and webhook ~= "" then
                                 if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
                                     sendDiscordEmbed(webhook, storeName, "robbery", jobId)
                                     sendLog(LogLevel.SUCCESS, "Robbery Logged", displayName .. " is under robbery — embed sent.", {
@@ -981,138 +879,6 @@ local function checkForOpenStores(player)
 end
 
 -- =============================================
---          SERVER HOP LOGIC (WITH TIMEOUT & AUTO-RETRY)
--- =============================================
-
-local function getTargetServer(placeId, currentJobId)
-    local allServers = {}
-    local cursor = nil
-    local visited = getgenv().VisitedServers
-
-    repeat
-        local ok, result = pcall(function()
-            return game:GetService("HttpService"):JSONDecode(
-                request({
-                    Url = "https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Asc&limit=100" .. (cursor and ("&cursor=" .. cursor) or ""),
-                    Method = "GET"
-                }).Body
-            )
-        end)
-        if not ok or not result or not result.data then
-            sendLog(LogLevel.ERROR, "Server List Fetch Failed", "Failed to retrieve server list from Roblox API.")
-            break
-        end
-        for _, server in ipairs(result.data) do
-            local isCurrentServer = server.id == currentJobId
-            local isVisited = visited[server.id] == true
-            local playing = server.playing or 0
-            local maxPlayers = server.maxPlayers or 0
-            local hasSpace = playing < maxPlayers
-            local underLimit = playing <= MAX_PLAYERS
-            if not isCurrentServer and not isVisited and hasSpace and underLimit then
-                table.insert(allServers, server)
-            end
-        end
-        if #allServers > 0 then break end
-        cursor = result.nextPageCursor
-    until not cursor
-
-    if #allServers == 0 then
-        sendLog(LogLevel.WARNING, "No Valid Servers", "No servers found under player limit. Clearing visited list and retrying.")
-        getgenv().VisitedServers = {}
-        return nil
-    end
-
-    table.sort(allServers, function(a, b) return (a.playing or 0) < (b.playing or 0) end)
-
-    local nonUSAServers = {}
-    for _, server in ipairs(allServers) do
-        local region = getServerRegion(placeId, server.id)
-        if region == "US" then
-            sendLog(LogLevel.INFO, "Skipping USA Server", "Server " .. server.id .. " is in USA.")
-        else
-            table.insert(nonUSAServers, server)
-        end
-        task.wait(0.1)
-    end
-
-    if #nonUSAServers == 0 then
-        sendLog(LogLevel.WARNING, "No Non‑USA Servers", "All candidate servers are in USA. Falling back to any server.")
-        nonUSAServers = allServers
-    end
-
-    local best = nonUSAServers[1]
-    sendLog(LogLevel.HOP, "Target Server Found", "Identified best server to hop to.", {
-        { name = "Target ID", value = best.id, inline = false },
-        { name = "Players",   value = tostring(best.playing) .. "/" .. tostring(best.maxPlayers), inline = true },
-    })
-    return best.id
-end
-
-local function hopToNewServer(player)
-    -- Prevent overlapping teleport attempts
-    if getgenv().TeleportInProgress then
-        sendLog(LogLevel.WARNING, "Teleport Already in Progress", "Skipping duplicate teleport request.")
-        return
-    end
-    getgenv().TeleportInProgress = true
-
-    local placeId = game.PlaceId
-    local oldJobId = game.JobId
-    getgenv().VisitedServers[oldJobId] = true
-
-    local targetJobId = getTargetServer(placeId, oldJobId)
-    local TeleportService = game:GetService("TeleportService")
-
-    pcall(function() clear_teleport_queue() end)
-    pcall(function() queue_on_teleport(getgenv()._ServerHopSource) end)
-
-    if targetJobId then
-        sendLog(LogLevel.HOP, "Teleporting", "Attempting teleport to target server.", {
-            { name = "Target", value = targetJobId, inline = false }
-        })
-
-        -- Start the teleport
-        local success, err = pcall(function()
-            TeleportService:TeleportToPlaceInstance(placeId, targetJobId, player)
-        end)
-
-        if not success then
-            sendLog(LogLevel.ERROR, "Teleport Failed", "TeleportToPlaceInstance failed. Falling back to random server.", {
-                { name = "Error", value = tostring(err), inline = false }
-            })
-            getgenv().TeleportInProgress = false
-            pcall(function() TeleportService:Teleport(placeId, player) end)
-            return
-        end
-
-        -- Start a timeout coroutine to detect stuck teleport
-        task.spawn(function()
-            task.wait(30)  -- Wait 30 seconds
-
-            -- If we are still in the same server, assume the teleport is stuck
-            if game.JobId == oldJobId then
-                sendLog(LogLevel.WARNING, "Teleport Stuck", "No server change after 30 seconds. Re‑attempting hop.")
-                getgenv().TeleportInProgress = false
-                hopToNewServer(player)  -- Try again
-            else
-                -- Teleport succeeded; flag will be cleared in new server if needed
-                getgenv().TeleportInProgress = false
-            end
-        end)
-
-    else
-        sendLog(LogLevel.WARNING, "No Target Server", "No valid server found. Falling back to random server teleport.")
-        getgenv().TeleportInProgress = false
-        pcall(function() TeleportService:Teleport(placeId, player) end)
-    end
-end
-
-if not getgenv()._ServerHopSource then
-    getgenv()._ServerHopSource = [[loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/main.lua"))()]]
-end
-
--- =============================================
 --              MAIN EXECUTION
 -- =============================================
 pcall(function()
@@ -1123,11 +889,18 @@ pcall(function()
         { name = "Server ID", value = currentJobId, inline = false }
     })
 
+    -- Check for s5nni players immediately
+    if ServerHop.hasS5nniPlayer() then
+        sendLog(LogLevel.INFO, "S5nni Player Detected", "Hopping to another server without scanning.")
+        ServerHop.hopToNewServer(player)
+        return
+    end
+
     if getgenv().ServerId == currentJobId then
         sendLog(LogLevel.WARNING, "Duplicate Server Detected", "Current server matches stored ServerId. Skipping scan and hopping immediately.", {
             { name = "Server ID", value = currentJobId, inline = false }
         })
-        hopToNewServer(player)
+        ServerHop.hopToNewServer(player)
         return
     end
 
@@ -1140,5 +913,5 @@ pcall(function()
     sendLog(LogLevel.SUCCESS, "Cycle Complete", "All scans finished. IsFinished set. Hopping in 2 seconds.")
     task.wait(2)
 
-    hopToNewServer(player)
+    ServerHop.hopToNewServer(player)
 end)
