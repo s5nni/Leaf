@@ -209,11 +209,10 @@ local function getCrownJewelTimer()
     end
     return nil
 end
--- Plane detection (approach + landed)
 local PLANE_SPAWN = Vector3.new(3727.843, 594.45, -509.572)
 local PLANE_TURN = Vector3.new(-3145.715, 333.56, 2331.847)
 local AIRPORT = Vector3.new(-0.208, -54.296, -0.231)
-local APPROACH_RADIUS = 2000 -- studs
+local APPROACH_RADIUS = 2000
 local function isPlaneActive()
     local plane = workspace:FindFirstChild("Plane")
     if not plane then return false end
@@ -226,38 +225,69 @@ local function isPlaneActive()
     end
     local distToAirport = (pos - AIRPORT).Magnitude
     local distToTurn = (pos - PLANE_TURN).Magnitude
-    -- Active if within APPROACH_RADIUS of airport AND it has passed the turn point (closer to airport than to turn)
     return distToAirport <= APPROACH_RADIUS and distToAirport < distToTurn
+end
+local function getPlaneETA()
+    local plane = workspace:FindFirstChild("Plane")
+    if not plane then return nil end
+    local pos, velocity
+    if plane:IsA("Model") then
+        local primary = plane.PrimaryPart
+        if primary then
+            pos = primary.Position
+            velocity = primary.Velocity
+        else
+            return nil
+        end
+    else
+        pos = plane.Position
+        velocity = plane.Velocity
+    end
+    if not pos or not velocity then return nil end
+    local speed = velocity.Magnitude
+    if speed < 0.1 then return nil end
+    local distToAirport = (pos - AIRPORT).Magnitude
+    local etaSeconds = distToAirport / speed
+    return etaSeconds
 end
 local CARGO_START = Vector3.new(-374.895, -1.093, -6000.34)
 local CARGO_END = Vector3.new(-1659.279, 31.59, 268.128)
 local PASSENGER_START = CARGO_END
 local PASSENGER_END = CARGO_START
 local TRAIN_SPEED = 50
-local function getTrainInfo()
+local function getAllTrainTimes()
     local trains = workspace:FindFirstChild("Trains")
-    if not trains then return nil end
-    local locoFront = trains:FindFirstChild("LocomotiveFront")
-    if not locoFront then return nil end
-    local model = locoFront:FindFirstChild("Model")
-    if not model then return nil end
-    local body = model:FindFirstChild("Body")
-    if not body or not body:IsA("BasePart") then return nil end
-    local color = body.Color
-    local r = math.round(color.R * 255)
-    local g = math.round(color.G * 255)
-    local b = math.round(color.B * 255)
-    if r == 255 and g == 144 and b == 78 then
-        local pos = body.Position
-        local distToEnd = (pos - CARGO_END).Magnitude
-        local timeRemaining = distToEnd / TRAIN_SPEED
-        return "cargo", timeRemaining
-    else
-        local pos = body.Position
-        local distToEnd = (pos - PASSENGER_END).Magnitude
-        local timeRemaining = distToEnd / TRAIN_SPEED
-        return "passenger", timeRemaining
+    if not trains then return nil, nil end
+    local cargoTime, passengerTime = nil, nil
+    for _, loco in ipairs(trains:GetChildren()) do
+        if loco.Name:find("LocomotiveFront") then
+            local model = loco:FindFirstChild("Model")
+            if model then
+                local body = model:FindFirstChild("Body")
+                if body and body:IsA("BasePart") then
+                    local color = body.Color
+                    local r = math.round(color.R * 255)
+                    local g = math.round(color.G * 255)
+                    local b = math.round(color.B * 255)
+                    local pos = body.Position
+                    -- Cargo color: (255,144,78)
+                    if r == 255 and g == 144 and b == 78 then
+                        local totalPath = (CARGO_START - CARGO_END).Magnitude * 1.2
+                        local traveled = (pos - CARGO_START).Magnitude
+                        local remaining = math.max(totalPath - traveled, 0)
+                        cargoTime = remaining / TRAIN_SPEED
+                    else
+                        -- Passenger (any other color)
+                        local totalPath = (PASSENGER_START - PASSENGER_END).Magnitude * 1.2
+                        local traveled = (pos - PASSENGER_START).Magnitude
+                        local remaining = math.max(totalPath - traveled, 0)
+                        passengerTime = remaining / TRAIN_SPEED
+                    end
+                end
+            end
+        end
     end
+    return cargoTime, passengerTime
 end
 local function getOilRigTimer()
     local oilRig = workspace:FindFirstChild("OilRig")
@@ -265,24 +295,21 @@ local function getOilRigTimer()
     local tntPlants = oilRig:FindFirstChild("TNTPlantLocations")
     if not tntPlants then return nil end
     for _, child in ipairs(tntPlants:GetChildren()) do
-        local tnt = child:FindFirstChild("TNT")
+        local tnt = child:FindFirstChild("TNT", true)
         if tnt then
-            local timer = tnt:FindFirstChild("Timer")
-            if timer then
-                local surfaceGui = timer:FindFirstChildWhichIsA("SurfaceGui")
-                if surfaceGui then
-                    local textLabel = surfaceGui:FindFirstChildWhichIsA("TextLabel")
-                    if textLabel and textLabel.Text and textLabel.Text ~= "" then
-                        local seconds = parseTimerString(textLabel.Text)
-                        if seconds then return seconds end
-                    end
+            local surfaceGui = tnt:FindFirstChildWhichIsA("SurfaceGui", true)
+            if surfaceGui then
+                local textLabel = surfaceGui:FindFirstChildWhichIsA("TextLabel", true)
+                if textLabel and textLabel.Text and textLabel.Text ~= "" then
+                    local seconds = parseTimerString(textLabel.Text)
+                    if seconds then return seconds end
                 end
             end
         end
     end
     return nil
 end
-local function sendDiscordEmbed(webhookUrl, storeName, status, jobId, isSecondPass, timerSeconds)
+local function sendDiscordEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
@@ -296,7 +323,6 @@ local function sendDiscordEmbed(webhookUrl, storeName, status, jobId, isSecondPa
     local statusText = isOpen and "Open" or "Under Robbery"
     local displayName = formatName(storeName)
     local title = displayName .. " is " .. string.lower(statusText) .. "."
-    local passText = isSecondPass and " (Delayed)" or ""
     local roleId = getgenv().WebhookConfig.Roles[storeName]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = getgenv().WebhookConfig.Images[storeName]
@@ -309,10 +335,9 @@ local function sendDiscordEmbed(webhookUrl, storeName, status, jobId, isSecondPa
         { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
     }
     if timerSeconds then
-        table.insert(fields, 4, { name = "⏳ Time Remaining", value = "<t:" .. (now + timerSeconds) .. ":R>", inline = true })
+        table.insert(fields, 4, { name = "⏳ Closes in", value = "<t:" .. (now + timerSeconds) .. ":R>", inline = true })
     end
     local embed = {
-        title = title .. passText,
         color = color,
         fields = fields,
         footer = { text = "Leaf Logger " .. BOT_VERSION },
@@ -325,7 +350,7 @@ local function sendDiscordEmbed(webhookUrl, storeName, status, jobId, isSecondPa
     if not ok then return end
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
 end
-local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId, timerText, isSecondPass)
+local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId, timerText)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
@@ -334,7 +359,6 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
     local prisoners = teamCounts.Prisoner
     local crimAndPris = criminals + prisoners
     local totalPlayers = crimAndPris + police
-    local passText = isSecondPass and " (Delayed)" or ""
     local roleKey = colorDef.label:match("🔴") and "RedAirdrop" or
                     colorDef.label:match("🟤") and "BrownAirdrop" or
                     colorDef.label:match("🔵") and "BlueAirdrop" or nil
@@ -342,7 +366,6 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = roleKey and getgenv().WebhookConfig.Images[roleKey]
     local embed = {
-        title = "📦 Airdrop Detected!" .. passText,
         color = colorDef.embedColor,
         fields = {
             { name = "🎨 Drop Type",             value = colorDef.label,   inline = true  },
@@ -364,7 +387,7 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
     if not ok then return end
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
 end
-local function sendPlaneEmbed(webhookUrl, jobId, isSecondPass)
+local function sendPlaneEmbed(webhookUrl, jobId)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
@@ -373,12 +396,10 @@ local function sendPlaneEmbed(webhookUrl, jobId, isSecondPass)
     local prisoners = teamCounts.Prisoner
     local crimAndPris = criminals + prisoners
     local totalPlayers = crimAndPris + police
-    local passText = isSecondPass and " (Delayed)" or ""
     local roleId = getgenv().WebhookConfig.Roles["Cargo_Plane"]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = getgenv().WebhookConfig.Images["Cargo_Plane"]
-
-    local eta = getPlaneETA()  -- this function must be defined earlier
+    local eta = getPlaneETA()
     local fields = {
         { name = "👥 Total Players", value = tostring(totalPlayers), inline = true },
         { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
@@ -388,24 +409,23 @@ local function sendPlaneEmbed(webhookUrl, jobId, isSecondPass)
     }
     if eta then
         table.insert(fields, 1, { name = "✈️ Arrives in", value = "<t:" .. (now + eta) .. ":R>", inline = true })
+    else
+        table.insert(fields, 1, { name = "✈️ Arrives in", value = "Unknown", inline = true })
     end
-
     local embed = {
-        title = "Cargo Plane Approaching!" .. passText,
         color = 3447003,
         fields = fields,
         footer = { text = "Leaf Logger " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
-
     local embedPayload = { embeds = { embed } }
     if roleMention then embedPayload.content = roleMention end
     local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
     if not ok then return end
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
 end
-local function sendTrainEmbed(webhookUrl, trainType, timeRemaining, jobId, isSecondPass)
+local function sendTrainsEmbed(webhookUrl, cargoTime, passengerTime, jobId)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
@@ -414,61 +434,57 @@ local function sendTrainEmbed(webhookUrl, trainType, timeRemaining, jobId, isSec
     local prisoners = teamCounts.Prisoner
     local crimAndPris = criminals + prisoners
     local totalPlayers = crimAndPris + police
-    local passText = isSecondPass and " (Delayed)" or ""
-    local roleKey = (trainType == "cargo") and "Cargo_Train" or "Passenger_Train"
-    local roleId = getgenv().WebhookConfig.Roles[roleKey]
+    local roleId = getgenv().WebhookConfig.Roles["Train"] or getgenv().WebhookConfig.Roles["Cargo_Train"]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
-    local imageUrl = getgenv().WebhookConfig.Images[roleKey]
-
+    local imageUrl = getgenv().WebhookConfig.Images["Train"] or getgenv().WebhookConfig.Images["Cargo_Train"]
+    local fields = {}
+    if cargoTime then
+        table.insert(fields, { name = "🚂 Cargo Train", value = "Closes <t:" .. (now + cargoTime) .. ":R>", inline = true })
+    end
+    if passengerTime then
+        table.insert(fields, { name = "🚆 Passenger Train", value = "Closes <t:" .. (now + passengerTime) .. ":R>", inline = true })
+    end
+    table.insert(fields, { name = "👥 Total Players", value = tostring(totalPlayers), inline = true })
+    table.insert(fields, { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false })
+    table.insert(fields, { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true })
+    table.insert(fields, { name = "🚔 Police",       value = tostring(police),    inline = true  })
+    table.insert(fields, { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true })
+    local embed = {
+        color = 15105570,
+        fields = fields,
+        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+    }
+    if imageUrl then embed.image = { url = imageUrl } end
+    local embedPayload = { embeds = { embed } }
+    if roleMention then embedPayload.content = roleMention end
+    local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
+    if not ok then return end
+    pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
+end
+local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId)
+    local now = os.time()
+    local joinLink = getJoinLink(jobId)
+    local teamCounts = getTeamCounts()
+    local criminals = teamCounts.Criminal
+    local police = teamCounts.Police
+    local prisoners = teamCounts.Prisoner
+    local crimAndPris = criminals + prisoners
+    local totalPlayers = crimAndPris + police
+    local roleId = getgenv().WebhookConfig.Roles["Oil_Rig"]
+    local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
+    local imageUrl = getgenv().WebhookConfig.Images["Oil_Rig"]
     local fields = {
-        { name = "⏳ Closes in",    value = "<t:" .. (now + timeRemaining) .. ":R>", inline = true },
+        { name = "⏳ Closes in",   value = "<t:" .. (now + timeRemaining) .. ":R>", inline = true },
         { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
         { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
         { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
         { name = "🚔 Police",       value = tostring(police),    inline = true  },
         { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
     }
-
     local embed = {
-        title = (trainType == "cargo" and "🚂 Cargo Train Active!" or "🚆 Passenger Train Active!") .. passText,
-        color = trainType == "cargo" and 15105570 or 3066993,
-        fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
-        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-    }
-    if imageUrl then embed.image = { url = imageUrl } end
-
-    local embedPayload = { embeds = { embed } }
-    if roleMention then embedPayload.content = roleMention end
-    local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
-    if not ok then return end
-    pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
-end
-local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId, isSecondPass)
-    local now = os.time()
-    local joinLink = getJoinLink(jobId)
-    local teamCounts = getTeamCounts()
-    local criminals = teamCounts.Criminal
-    local police = teamCounts.Police
-    local prisoners = teamCounts.Prisoner
-    local crimAndPris = criminals + prisoners
-    local totalPlayers = crimAndPris + police
-    local passText = isSecondPass and " (Delayed)" or ""
-    local roleId = getgenv().WebhookConfig.Roles["Oil_Rig"]
-    local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
-    local imageUrl = getgenv().WebhookConfig.Images["Oil_Rig"]
-    local embed = {
-        title = "🛢️ Oil Rig Robbery!" .. passText,
         color = 16753920,
-        fields = {
-            { name = "📍 Status",      value = "Under Robbery", inline = true  },
-            { name = "⏳ Time Left",   value = "<t:" .. (now + timeRemaining) .. ":R>", inline = true },
-            { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
-            { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
-            { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
-            { name = "🚔 Police",       value = tostring(police),    inline = true  },
-            { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
-        },
+        fields = fields,
         footer = { text = "Leaf Logger " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
@@ -510,7 +526,7 @@ local function getMansionStatus()
     end
     return status, displayStatus, timeText
 end
-local function checkAirdrops(jobId, loggedDrops, isSecondPass)
+local function checkAirdrops(jobId, loggedDrops)
     local webhook = getgenv().WebhookConfig.Webhooks.Airdrop
     if not webhook or webhook == "" then
         sendLog(LogLevel.WARNING, "Airdrop Webhook Missing", "No webhook.")
@@ -523,7 +539,7 @@ local function checkAirdrops(jobId, loggedDrops, isSecondPass)
         if drop.Name == "Drop" and drop:IsA("Model") then table.insert(candidates, drop) end
     end
     if #candidates == 0 then
-        if not isSecondPass then sendLog(LogLevel.WARNING, "Airdrop Scan", "No 'Drop' models.") end
+        sendLog(LogLevel.WARNING, "Airdrop Scan", "No 'Drop' models.")
         return loggedDrops
     end
     for _, drop in ipairs(candidates) do
@@ -567,7 +583,7 @@ local function checkAirdrops(jobId, loggedDrops, isSecondPass)
         end
         local pos = getDropPosition(drop)
         local locName = pos and getNearestLocation(pos) or "Unknown Location"
-        sendAirdropEmbed(webhook, drop, colorDef, locName, jobId, timerText, isSecondPass)
+        sendAirdropEmbed(webhook, drop, colorDef, locName, jobId, timerText)
         loggedDrops[drop] = true
         logged = logged + 1
         sendLog(LogLevel.SUCCESS, "Airdrop Logged", "Logged.", {
@@ -577,12 +593,11 @@ local function checkAirdrops(jobId, loggedDrops, isSecondPass)
         })
     end
     if found > 0 then
-        sendLog(LogLevel.INFO, "Airdrop Scan " .. (isSecondPass and "Second Pass" or "First Pass"), 
-            string.format("Found %d, Newly Logged %d", found, logged))
+        sendLog(LogLevel.INFO, "Airdrop Scan", string.format("Found %d, Logged %d", found, logged))
     end
     return loggedDrops
 end
-local function scanStores(player, jobId, loggedStores, isSecondPass)
+local function scanStores(player, jobId, loggedStores)
     local pg = player and player:FindFirstChild("PlayerGui")
     if not pg then sendLog(LogLevel.ERROR, "Store Scan", "PlayerGui not found.") return loggedStores end
     local wm = pg:FindFirstChild("WorldMarkersGui")
@@ -611,6 +626,11 @@ local function scanStores(player, jobId, loggedStores, isSecondPass)
                         if loggedStores[storeName] then break end
                         local code = getCrownJewelCode() or "N/A"
                         local timer = getCrownJewelTimer()
+                        -- Skip if timer <= 60 seconds (1 minute)
+                        if timer and timer <= 60 then
+                            sendLog(LogLevel.INFO, "Crown Jewel Skipped", "Timer too low: " .. timer .. "s")
+                            break
+                        end
                         local now = os.time()
                         local joinLink = getJoinLink(jobId)
                         local tc = getTeamCounts()
@@ -618,12 +638,10 @@ local function scanStores(player, jobId, loggedStores, isSecondPass)
                         local crimAndPris = crim + pris; local total = crimAndPris + pol
                         local statusText = isOpen and "Open" or "Under Robbery"
                         local title = display .. " is " .. string.lower(statusText) .. "."
-                        local passText = isSecondPass and " (Delayed)" or ""
                         local roleId = getgenv().WebhookConfig.Roles["Crown_Jewel"]
                         local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
                         local imageUrl = getgenv().WebhookConfig.Images["Crown_Jewel"]
                         local fields = {
-                            { name = "📍 Status",      value = statusText,          inline = true  },
                             { name = "👥 Total Players", value = tostring(total),   inline = true  },
                             { name = "🔢 Code",        value = code,                inline = true  },
                             { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
@@ -632,10 +650,9 @@ local function scanStores(player, jobId, loggedStores, isSecondPass)
                             { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
                         }
                         if timer then
-                            table.insert(fields, 4, { name = "⏳ Closes in", value = "<t:" .. (now + timer) .. ":R>", inline = true })
+                            table.insert(fields, 1, { name = "⏳ Closes in", value = "<t:" .. (now + timer) .. ":R>", inline = true })
                         end
                         local embed = {
-                            title = title .. passText,
                             color = isOpen and 3066993 or 15105570,
                             fields = fields,
                             footer = { text = "Leaf Logger " .. BOT_VERSION },
@@ -663,12 +680,10 @@ local function scanStores(player, jobId, loggedStores, isSecondPass)
                         local tc = getTeamCounts()
                         local crim = tc.Criminal; local pol = tc.Police; local pris = tc.Prisoner
                         local crimAndPris = crim + pris; local total = crimAndPris + pol
-                        local passText = isSecondPass and " (Delayed)" or ""
                         local roleId = getgenv().WebhookConfig.Roles["Mansion"]
                         local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
                         local imageUrl = getgenv().WebhookConfig.Images["Mansion"]
                         local embed = {
-                            title = "Mansion is " .. displayStatus .. "." .. passText,
                             color = status == "open" and 3066993 or (status == "opening_soon" and 16753920 or 15158332),
                             fields = {
                                 { name = "⏰ Game Time",   value = timeText,            inline = true },
@@ -696,7 +711,7 @@ local function scanStores(player, jobId, loggedStores, isSecondPass)
                         if isOpen then
                             if webhook and webhook ~= "" then
                                 if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
-                                    sendDiscordEmbed(webhook, storeName, "open", jobId, isSecondPass)
+                                    sendDiscordEmbed(webhook, storeName, "open", jobId)
                                     sendLog(LogLevel.SUCCESS, "Store Open", display .. " open.", {{name="Store",value=display}})
                                     loggedStores[storeName] = true
                                 else
@@ -708,9 +723,15 @@ local function scanStores(player, jobId, loggedStores, isSecondPass)
                         elseif isRobbery then
                             if storeName == "Cargo_Plane" then
                                 sendLog(LogLevel.INFO, "Cargo Plane Robbery Skipped", "Cargo Plane robbery not logged.")
+                            elseif storeName == "Oil_Rig" then
+                                -- Skip Oil Rig; it will be logged by special robberies with timer
+                                sendLog(LogLevel.INFO, "Oil Rig Robbery", "Skipping store scan, will be logged by special robberies.")
+                            elseif storeName == "Cargo_Train" or storeName == "Passenger_Train" then
+                                -- Skip trains; they will be logged by special robberies with combined embed
+                                sendLog(LogLevel.INFO, display .. " Robbery", "Skipping store scan, will be logged by special robberies.")
                             elseif webhook and webhook ~= "" then
                                 if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
-                                    sendDiscordEmbed(webhook, storeName, "robbery", jobId, isSecondPass)
+                                    sendDiscordEmbed(webhook, storeName, "robbery", jobId)
                                     sendLog(LogLevel.SUCCESS, "Robbery Logged", display .. " under robbery.", {{name="Store",value=display}})
                                     loggedStores[storeName] = true
                                 else
@@ -727,8 +748,7 @@ local function scanStores(player, jobId, loggedStores, isSecondPass)
         end
         if not found then missedCount = missedCount + 1 end
     end
-    local passName = isSecondPass and "Second Pass" or "First Pass"
-    sendLog(LogLevel.INFO, "Store Scan " .. passName, "Completed.", {
+    sendLog(LogLevel.INFO, "Store Scan", "Completed.", {
         {name="✅ Open",value=openCount},
         {name="🔴 Robbery",value=robberyCount},
         {name="⚫ Closed",value=closedCount},
@@ -736,36 +756,36 @@ local function scanStores(player, jobId, loggedStores, isSecondPass)
     })
     return loggedStores
 end
-local function checkSpecialRobberies(jobId, loggedSpecials, isSecondPass)
+local function checkSpecialRobberies(jobId, loggedSpecials)
     local logged = loggedSpecials or {}
-    -- Cargo Plane (now using approach detection)
+    local trainWebhook = getgenv().WebhookConfig.Webhooks["Train"] or getgenv().WebhookConfig.Webhooks["Cargo_Train"]
+    local cargoTime, passengerTime = getAllTrainTimes()
+    local anyTrain = (cargoTime ~= nil) or (passengerTime ~= nil)
+    if anyTrain and not logged.Trains then
+        if trainWebhook and trainWebhook ~= "" then
+            sendTrainsEmbed(trainWebhook, cargoTime, passengerTime, jobId)
+            logged.Trains = true
+            sendLog(LogLevel.SUCCESS, "Trains Logged", "Train activity detected.")
+        end
+    end
     if isPlaneActive() and not logged.Plane then
         local webhook = getgenv().WebhookConfig.Webhooks["Cargo_Plane"]
         if webhook and webhook ~= "" then
-            sendPlaneEmbed(webhook, jobId, isSecondPass)
+            sendPlaneEmbed(webhook, jobId)
             logged.Plane = true
             sendLog(LogLevel.SUCCESS, "Plane Logged", "Cargo plane is on approach.")
         end
     end
-    -- Trains
-    local trainType, trainTime = getTrainInfo()
-    if trainType and not logged[trainType.."Train"] then
-        local webhookKey = (trainType == "cargo") and "Cargo_Train" or "Passenger_Train"
-        local webhook = getgenv().WebhookConfig.Webhooks[webhookKey]
-        if webhook and webhook ~= "" then
-            sendTrainEmbed(webhook, trainType, trainTime, jobId, isSecondPass)
-            logged[trainType.."Train"] = true
-            sendLog(LogLevel.SUCCESS, "Train Logged", trainType.." train active.")
-        end
-    end
-    -- Oil Rig
     local oilTime = getOilRigTimer()
-    if oilTime and not logged.OilRig then
+    -- Skip if oilTime <= 60 seconds
+    if oilTime and oilTime > 60 and not logged.OilRig then
         local webhook = getgenv().WebhookConfig.Webhooks["Oil_Rig"]
         if webhook and webhook ~= "" then
-            sendOilRigEmbed(webhook, oilTime, jobId, isSecondPass)
+            sendOilRigEmbed(webhook, oilTime, jobId)
             logged.OilRig = true
             sendLog(LogLevel.SUCCESS, "Oil Rig Logged", "Oil Rig under robbery.")
+        elseif oilTime and oilTime <= 60 then
+            sendLog(LogLevel.INFO, "Oil Rig Skipped", "Timer too low: " .. oilTime .. "s")
         end
     end
     return logged
@@ -922,16 +942,16 @@ pcall(function()
     local loggedStores = {}
     local loggedDrops = {}
     local loggedSpecials = {}
-    loggedStores = scanStores(player, currentJobId, loggedStores, false)
-    loggedDrops = checkAirdrops(currentJobId, loggedDrops, false)
-    loggedSpecials = checkSpecialRobberies(currentJobId, loggedSpecials, false)
+    loggedStores = scanStores(player, currentJobId, loggedStores)
+    loggedDrops = checkAirdrops(currentJobId, loggedDrops)
+    loggedSpecials = checkSpecialRobberies(currentJobId, loggedSpecials)
     sendLog(LogLevel.INFO, "Waiting Period", "Waiting 15 seconds for robberies to start...")
     task.wait(15)
     sendLog(LogLevel.INFO, "Second Pass Started", "Scanning for robberies that started during wait...")
     updateLocationPositions()
-    loggedStores = scanStores(player, currentJobId, loggedStores, true)
-    loggedDrops = checkAirdrops(currentJobId, loggedDrops, true)
-    loggedSpecials = checkSpecialRobberies(currentJobId, loggedSpecials, true)
+    loggedStores = scanStores(player, currentJobId, loggedStores)
+    loggedDrops = checkAirdrops(currentJobId, loggedDrops)
+    loggedSpecials = checkSpecialRobberies(currentJobId, loggedSpecials)
     getgenv().IsFinished = true
     sendLog(LogLevel.SUCCESS, "Cycle Complete", "All scans finished. IsFinished set. Hopping in 2 seconds.")
     task.wait(2)
