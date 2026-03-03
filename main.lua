@@ -351,7 +351,9 @@ local function checkForOpenStores(player)
     end
     sendLog(LogLevel.INFO, "Store Scan Complete", "Finished.", {{name="✅ Open",value=openCount},{name="🔴 Robbery",value=robberyCount},{name="⚫ Closed",value=closedCount},{name="⚠️ Missed",value=missedCount},{name="⏭️ Skipped",value=skippedCount}})
 end
-if not getgenv()._ServerHopSource then getgenv()._ServerHopSource = [[loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/main.lua"))()]] end
+if not getgenv()._ServerHopSource then
+    getgenv()._ServerHopSource = [[loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/main.lua"))()]]
+end
 pcall(function()
     local player = waitForLoad()
     local currentJobId = game.JobId
