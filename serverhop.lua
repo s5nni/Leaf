@@ -82,7 +82,12 @@ function ServerHop.hopToNewServer(player)
     end
     local TeleportService = game:GetService("TeleportService")
     pcall(function() clear_teleport_queue() end)
-    pcall(function() queue_on_teleport(getgenv()._ServerHopSource) end)
+    -- Queue the main script to run on the new server
+    if getgenv()._ServerHopSource then
+        pcall(function() queue_on_teleport(getgenv()._ServerHopSource) end)
+        print("✅ Queued main.lua for next server.") -- Debug line
+        task.wait(0.1) -- Small delay to ensure it's registered
+    end
     local success, err = pcall(function()
         TeleportService:TeleportToPlaceInstance(placeId, target.id, player)
     end)
