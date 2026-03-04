@@ -416,10 +416,8 @@ local function sendPlaneEmbed(webhookUrl, phase, jobId)
     local roleId = getgenv().WebhookConfig.Roles["Cargo_Plane"]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = getgenv().WebhookConfig.Images["Cargo_Plane"]
-    local location = (phase == "Just Spawned") and "Near Spawn Point" or "Approaching Airport"
     local fields = {
         { name = "📍 Status",      value = phase,               inline = true },
-        { name = "🗺️ Location",    value = location,            inline = true },
         { name = "👥 Total Players", value = tostring(totalPlayers), inline = true },
         { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
         { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
@@ -451,9 +449,11 @@ local function sendTrainEmbed(webhookUrl, storeName, jobId)
     local prisoners = teamCounts.Prisoner
     local crimAndPris = criminals + prisoners
     local totalPlayers = crimAndPris + police
-    local roleId = getgenv().WebhookConfig.Roles[storeName]
+    -- Determine webhook key: for cargo train use "train", for passenger use "Passenger_Train"
+    local webhookKey = (storeName == "Cargo_Train") and "train" or "Passenger_Train"
+    local roleId = getgenv().WebhookConfig.Roles[webhookKey]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
-    local imageUrl = getgenv().WebhookConfig.Images[storeName]
+    local imageUrl = getgenv().WebhookConfig.Images[webhookKey]
     local displayName = formatName(storeName)
     local markers = workspace:FindFirstChild("RobberyMarkers")
     local nearestMarker = "Unknown"
@@ -780,9 +780,12 @@ local function scanStores(player, jobId, loggedStores)
                                     sendLog(LogLevel.WARNING, "Robbery — No Webhook", display .. " robbery but no webhook.")
                                 end
                             elseif storeName == "Cargo_Train" or storeName == "Passenger_Train" then
-                                if webhook and webhook ~= "" then
+                                -- For trains, use the dedicated train embed
+                                local webhookKey = (storeName == "Cargo_Train") and "train" or "Passenger_Train"
+                                local trainWebhook = getgenv().WebhookConfig.Webhooks[webhookKey]
+                                if trainWebhook and trainWebhook ~= "" then
                                     if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
-                                        sendTrainEmbed(webhook, storeName, jobId)
+                                        sendTrainEmbed(trainWebhook, storeName, jobId)
                                         sendLog(LogLevel.SUCCESS, "Train Logged", display .. " under robbery.", {{name="Store",value=display}})
                                         loggedStores[storeName] = true
                                     else
