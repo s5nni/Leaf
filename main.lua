@@ -447,11 +447,11 @@ local function sendBankTruckEmbed(webhookUrl, storeName, status, jobId, timerSec
 end
 
 local function sendBountyEmbed(webhookUrl, bountyPlayers, jobId)
-    -- bountyPlayers: table of tables with fields: username, userId, bounty
+    -- bountyPlayers: table of tables with fields: username, userId, bounty, displayName
     -- Sort by bounty descending, take highest for thumbnail
     table.sort(bountyPlayers, function(a, b) return a.bounty > b.bounty end)
     local topPlayer = bountyPlayers[1]
-    local thumbnailUrl = topPlayer and ("https://www.roblox.com/headshot-thumbnail/image?userId=" .. topPlayer.userId .. "&width=420&height=420&format=png") or nil
+    local thumbnailUrl = topPlayer and topPlayer.userId and ("https://www.roblox.com/headshot-thumbnail/image?userId=" .. topPlayer.userId .. "&width=420&height=420&format=png") or nil
 
     local now = os.time()
     local joinLink = getJoinLink(jobId)
@@ -470,7 +470,7 @@ local function sendBountyEmbed(webhookUrl, bountyPlayers, jobId)
     -- List each player with bounty
     local playerList = ""
     for _, p in ipairs(bountyPlayers) do
-        playerList = playerList .. "**" .. p.username .. "**: $" .. p.bounty .. "\n"
+        playerList = playerList .. "**" .. (p.username or p.displayName) .. "**: $" .. p.bounty .. "\n"
     end
     table.insert(fields, { name = "💰 Players with Bounties ($5k+)", value = playerList, inline = false })
     table.insert(fields, { name = "📊 Total Big Bounty Players", value = tostring(#bountyPlayers), inline = true })
@@ -673,7 +673,7 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
         { name = "📍 Location",    value = locationName,         inline = true },
         { name = "👥 Total Players", value = tostring(totalPlayers), inline = true },
         { name = "🔗 Join Server", value = "[Click to Join](" .. joinLink .. ")", inline = false },
-        { name = "🏃 Criminals",   value = tostring(crimAndPris), inline = true },
+        { name = "🏃 Criminals",   value = tostring(crimAndPris), inline = false },
         { name = "🚔 Police",      value = tostring(police),     inline = true },
         { name = "⏱️ Logged",      value = "<t:" .. now .. ":R>", inline = true },
     }
@@ -692,7 +692,7 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
 end
 
 -- =============================================
---           BOUNTY DETECTION
+--           BOUNTY DETECTION (FIXED)
 -- =============================================
 
 local function checkBounties(jobId, loggedSpecials)
@@ -706,48 +706,47 @@ local function checkBounties(jobId, loggedSpecials)
     end
 
     local bountyPlayers = {}
-    -- Find all BountyBoard models
-    for _, board in ipairs(workspace:GetChildren()) do
-        if board.Name == "BountyBoard" and board:IsA("Model") then
-            local boardModel = board:FindFirstChild("Board")
-            if boardModel then
-                local mostWanted = boardModel:FindFirstChild("MostWanted")
-                if mostWanted then
-                    local board2 = mostWanted:FindFirstChild("Board")
-                    if board2 then
-                        for _, playerFrame in ipairs(board2:GetChildren()) do
-                            if playerFrame.Name == "PlayerFrame" then
-                                local nameText = playerFrame:FindFirstChild("NameText")
-                                local bountyText = playerFrame:FindFirstChild("BountyText")
-                                if nameText and nameText:IsA("TextLabel") and bountyText and bountyText:IsA("TextLabel") then
-                                    local displayName = nameText.Text
-                                    local bountyStr = bountyText.Text:gsub("[$,]", "") -- remove $ and commas
-                                    local bounty = tonumber(bountyStr)
-                                    if bounty and bounty >= 5000 then
-                                        -- Find player with that display name
-                                        local targetPlayer = nil
-                                        for _, plr in ipairs(game:GetService("Players"):GetPlayers()) do
-                                            if plr.DisplayName == displayName then
-                                                targetPlayer = plr
-                                                break
-                                            end
+    -- Find the first BountyBoard (use only one)
+    local board = workspace:FindFirstChild("BountyBoard")
+    if board and board:IsA("Model") then
+        local boardModel = board:FindFirstChild("Board")
+        if boardModel then
+            local mostWanted = boardModel:FindFirstChild("MostWanted")
+            if mostWanted then
+                local board2 = mostWanted:FindFirstChild("Board")
+                if board2 then
+                    for _, playerFrame in ipairs(board2:GetChildren()) do
+                        if playerFrame.Name == "PlayerFrame" then
+                            local nameText = playerFrame:FindFirstChild("NameText")
+                            local bountyText = playerFrame:FindFirstChild("BountyText")
+                            if nameText and nameText:IsA("TextLabel") and bountyText and bountyText:IsA("TextLabel") then
+                                local displayName = nameText.Text:gsub("^%s+", ""):gsub("%s+$", "") -- trim
+                                local bountyStr = bountyText.Text:gsub("[$,]", "") -- remove $ and commas
+                                local bounty = tonumber(bountyStr)
+                                if bounty and bounty >= 5000 then
+                                    -- Find player with that display name
+                                    local targetPlayer = nil
+                                    for _, plr in ipairs(game:GetService("Players"):GetPlayers()) do
+                                        if plr.DisplayName == displayName then
+                                            targetPlayer = plr
+                                            break
                                         end
-                                        if targetPlayer then
-                                            table.insert(bountyPlayers, {
-                                                username = targetPlayer.Name,
-                                                userId = targetPlayer.UserId,
-                                                bounty = bounty,
-                                                displayName = displayName
-                                            })
-                                        else
-                                            -- Player not in server (maybe left?), still include with display name but no userId
-                                            table.insert(bountyPlayers, {
-                                                username = displayName,
-                                                userId = nil,
-                                                bounty = bounty,
-                                                displayName = displayName
-                                            })
-                                        end
+                                    end
+                                    if targetPlayer then
+                                        table.insert(bountyPlayers, {
+                                            username = targetPlayer.Name,
+                                            userId = targetPlayer.UserId,
+                                            bounty = bounty,
+                                            displayName = displayName
+                                        })
+                                    else
+                                        -- Player not in server (maybe left?), still include with display name but no userId
+                                        table.insert(bountyPlayers, {
+                                            username = displayName,
+                                            userId = nil,
+                                            bounty = bounty,
+                                            displayName = displayName
+                                        })
                                     end
                                 end
                             end
@@ -756,6 +755,8 @@ local function checkBounties(jobId, loggedSpecials)
                 end
             end
         end
+    else
+        sendLog(LogLevel.INFO, "Bounty Scan", "No BountyBoard found.")
     end
 
     if #bountyPlayers > 0 then
