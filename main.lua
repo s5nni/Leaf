@@ -39,22 +39,10 @@ local AIRDROP_COLORS = {
     { r = 148, g = 96,  b = 69,  label = "🟤 Brown",  embedColor = 10180422 },
     { r = 49,  g = 98,  b = 149, label = "🔵 Blue",   embedColor = 3447003  },
 }
-local LOCATIONS = { Tomb = nil, Casino = nil }
-local function updateLocationPositions()
-    local tomb = workspace:FindFirstChild("RobberyTomb")
-    if tomb then
-        local inner = tomb:FindFirstChild("Tomb")
-        if inner then
-            if inner:IsA("Model") then LOCATIONS.Tomb = inner:GetModelCFrame().Position
-            elseif inner:FindFirstChildWhichIsA("BasePart") then LOCATIONS.Tomb = inner:FindFirstChildWhichIsA("BasePart").Position end
-        end
-    end
-    local casino = workspace:FindFirstChild("Casino")
-    if casino then
-        if casino:IsA("Model") then LOCATIONS.Casino = casino:GetModelCFrame().Position
-        elseif casino:FindFirstChildWhichIsA("BasePart") then LOCATIONS.Casino = casino:FindFirstChildWhichIsA("BasePart").Position end
-    end
-end
+-- Fixed center points for airdrop locations
+local CACTUS_VALLEY_CENTER = Vector3.new(945.572509765625, 32.46596145629883, -217.1789093017578)
+local DUNES_CENTER = Vector3.new(962.0200805664062, 44.48336410522461, -159.24659729003906)
+
 local MAX_PLAYERS = 5
 local LogLevel = {
     INFO    = { label = "ℹ️ Info",       color = 5793266  },
@@ -100,7 +88,6 @@ local function waitForLoad()
     if not player.Character then player.CharacterAdded:Wait() end
     repeat task.wait(0.3) until game:IsLoaded()
     task.wait(2)
-    updateLocationPositions()
     return player
 end
 local function formatName(name) return name:gsub("_", " ") end
@@ -136,11 +123,13 @@ local function getDropPosition(drop)
 end
 local function getNearestLocation(pos)
     if not pos then return "Unknown Location" end
-    local distToTomb = LOCATIONS.Tomb and (pos - LOCATIONS.Tomb).Magnitude or math.huge
-    local distToCasino = LOCATIONS.Casino and (pos - LOCATIONS.Casino).Magnitude or math.huge
-    if distToTomb < distToCasino then return "Dunes"
-    elseif distToCasino < distToTomb then return "Cactus Valley"
-    else return "Unknown Location" end
+    local distToCactus = (pos - CACTUS_VALLEY_CENTER).Magnitude
+    local distToDunes = (pos - DUNES_CENTER).Magnitude
+    if distToCactus < distToDunes then
+        return "Cactus Valley"
+    else
+        return "Dunes"
+    end
 end
 local POSITION_THRESHOLD = 5
 local knownLocations = {
@@ -309,6 +298,35 @@ local function getOilRigTimer()
     end
     return nil
 end
+-- New teleport function for guaranteed markers
+local function teleportToMarkers()
+    local player = game:GetService("Players").LocalPlayer
+    if not player then return end
+    local character = player.Character
+    if not character then
+        player.CharacterAdded:Wait()
+        character = player.Character
+    end
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local markers = workspace:FindFirstChild("RobberyMarkers")
+    if not markers then
+        sendLog(LogLevel.WARNING, "Teleport", "RobberyMarkers folder not found.")
+        return
+    end
+
+    local locations = {"Bank", "Casino", "Tomb"}
+    for _, name in ipairs(locations) do
+        local marker = markers:FindFirstChild(name)
+        if marker and marker:IsA("BasePart") then
+            hrp.CFrame = marker.CFrame
+            task.wait(0.5) -- small delay to allow rendering
+        else
+            sendLog(LogLevel.WARNING, "Teleport", "Marker " .. name .. " not found.")
+        end
+    end
+end
 local function sendDiscordEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
@@ -364,18 +382,20 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
     local roleId = roleKey and getgenv().WebhookConfig.Roles[roleKey]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = roleKey and getgenv().WebhookConfig.Images[roleKey]
+    -- Reordered fields: timer first, then type, location, players, etc.
+    local fields = {
+        { name = "⏳ Time Left",   value = timerText or "N/A",   inline = true },
+        { name = "🎨 Drop Type",   value = colorDef.label,       inline = true },
+        { name = "📍 Location",    value = locationName,         inline = true },
+        { name = "👥 Total Players", value = tostring(totalPlayers), inline = true },
+        { name = "🔗 Join Server", value = "[Click to Join](" .. joinLink .. ")", inline = false },
+        { name = "🦹 Criminals",   value = tostring(crimAndPris), inline = false },
+        { name = "🚔 Police",      value = tostring(police),     inline = true },
+        { name = "⏱️ Logged",      value = "<t:" .. now .. ":R>", inline = true },
+    }
     local embed = {
         color = colorDef.embedColor,
-        fields = {
-            { name = "🎨 Drop Type",             value = colorDef.label,   inline = true  },
-            { name = "📍 Location",              value = locationName,     inline = true  },
-            { name = "⏳ Time Left",             value = timerText or "N/A", inline = true },
-            { name = "👥 Total Players",         value = tostring(totalPlayers), inline = true },
-            { name = "🔗 Join Server",           value = "[Click to Join](" .. joinLink .. ")", inline = false },
-            { name = "🦹 Criminals",             value = tostring(crimAndPris), inline = false },
-            { name = "🚔 Police",                value = tostring(police), inline = true  },
-            { name = "⏱️ Logged",                value = "<t:" .. now .. ":R>", inline = true },
-        },
+        fields = fields,
         footer = { text = "Leaf Logger " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
@@ -944,6 +964,10 @@ pcall(function()
         return
     end
     getgenv().ServerId = currentJobId
+
+    -- Teleport to all three markers before first scan
+    teleportToMarkers()
+
     sendLog(LogLevel.INFO, "First Pass Started", "Scanning for open stores...")
     local loggedStores = {}
     local loggedDrops = {}
@@ -954,7 +978,7 @@ pcall(function()
     sendLog(LogLevel.INFO, "Waiting Period", "Waiting 15 seconds for robberies to start...")
     task.wait(15)
     sendLog(LogLevel.INFO, "Second Pass Started", "Scanning for robberies that started during wait...")
-    updateLocationPositions()
+    -- No teleport before second pass (as requested)
     loggedStores = scanStores(player, currentJobId, loggedStores)
     loggedDrops = checkAirdrops(currentJobId, loggedDrops)
     loggedSpecials = checkSpecialRobberies(currentJobId, loggedSpecials)
