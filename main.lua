@@ -324,6 +324,24 @@ local function getTrainData(storeName)
     return nil, nil
 end
 
+-- Helper to find closest RobberyMarker to a position
+local function getClosestMarkerName(pos)
+    local markers = workspace:FindFirstChild("RobberyMarkers")
+    if not markers then return "Unknown" end
+    local closestName = "Unknown"
+    local minDist = math.huge
+    for _, child in ipairs(markers:GetChildren()) do
+        if child:IsA("BasePart") then
+            local dist = (pos - child.Position).Magnitude
+            if dist < minDist then
+                minDist = dist
+                closestName = child.Name
+            end
+        end
+    end
+    return closestName
+end
+
 local function sendDiscordEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
@@ -416,8 +434,10 @@ local function sendPlaneEmbed(webhookUrl, phase, jobId)
     local roleId = getgenv().WebhookConfig.Roles["Cargo_Plane"]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = getgenv().WebhookConfig.Images["Cargo_Plane"]
+    local location = (phase == "Just Spawned") and "Near Spawn Point" or "Approaching Airport"
     local fields = {
         { name = "📍 Status",      value = phase,               inline = true },
+        { name = "📍 Location",    value = location,            inline = true },
         { name = "👥 Total Players", value = tostring(totalPlayers), inline = true },
         { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
         { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
@@ -455,24 +475,10 @@ local function sendTrainEmbed(webhookUrl, storeName, jobId)
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = getgenv().WebhookConfig.Images[webhookKey]
     local displayName = formatName(storeName)
-    local markers = workspace:FindFirstChild("RobberyMarkers")
-    local nearestMarker = "Unknown"
-    local minDist = math.huge
-    if markers then
-        for _, markerName in ipairs({"Bank", "Casino", "Tomb"}) do
-            local marker = markers:FindFirstChild(markerName)
-            if marker and marker:IsA("BasePart") then
-                local dist = (pos - marker.Position).Magnitude
-                if dist < minDist then
-                    minDist = dist
-                    nearestMarker = markerName
-                end
-            end
-        end
-    end
+    local locationName = getClosestMarkerName(pos)
     local fields = {
         { name = "⏳ Closes in",   value = "<t:" .. (now + timeRemaining) .. ":R>", inline = true },
-        { name = "🗺️ Location",    value = nearestMarker,                           inline = true },
+        { name = "📍 Location",    value = locationName,                           inline = true },
         { name = "👥 Total Players", value = tostring(totalPlayers),                inline = true },
         { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")",  inline = false },
         { name = "🏃 Criminals",    value = tostring(crimAndPris),                  inline = true },
