@@ -582,7 +582,7 @@ end
 
 -- Train embed temporarily reverted to generic
 local function sendTrainEmbed(webhookUrl, storeName, jobId)
-    sendJewelryStoreEmbed(webhookUrl, storeName, "robbery", jobId) -- treat as robbery
+    sendJewelryStoreEmbed(webhookUrl, storeName, "robbery", jobId)
 end
 
 local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId)
@@ -659,7 +659,7 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
 end
 
 -- =============================================
---           BOUNTY DETECTION (DEBUG)
+--           BOUNTY DETECTION (Closest Board)
 -- =============================================
 
 local function checkBounties(jobId, loggedSpecials)
@@ -672,64 +672,88 @@ local function checkBounties(jobId, loggedSpecials)
         return loggedSpecials
     end
 
+    -- Find closest BountyBoard
+    local localPlayer = game:GetService("Players").LocalPlayer
+    local hrp = localPlayer and localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then
+        sendLog(LogLevel.WARNING, "Bounty Scan", "Could not get HumanoidRootPart to determine closest board. Skipping.")
+        return loggedSpecials
+    end
+
+    local closestBoard = nil
+    local closestDist = math.huge
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if obj.Name == "BountyBoard" and obj:IsA("Model") then
+            local pos
+            if obj.PrimaryPart then
+                pos = obj.PrimaryPart.Position
+            else
+                for _, part in ipairs(obj:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        pos = part.Position
+                        break
+                    end
+                end
+            end
+            if pos then
+                local dist = (pos - hrp.Position).Magnitude
+                if dist < closestDist then
+                    closestDist = dist
+                    closestBoard = obj
+                end
+            end
+        end
+    end
+
+    if not closestBoard then
+        sendLog(LogLevel.INFO, "Bounty Scan", "No BountyBoard found.")
+        return loggedSpecials
+    end
+
     local bountyPlayers = {}
-    local board = workspace:FindFirstChild("BountyBoard")
-    if board and board:IsA("Model") then
-        local boardModel = board:FindFirstChild("Board")
-        if boardModel then
-            local mostWanted = boardModel:FindFirstChild("MostWanted")
-            if mostWanted then
-                local board2 = mostWanted:FindFirstChild("Board")
-                if board2 then
-                    for _, playerFrame in ipairs(board2:GetChildren()) do
-                        if playerFrame.Name == "PlayerFrame" then
-                            local nameText = playerFrame:FindFirstChild("NameText")
-                            local bountyText = playerFrame:FindFirstChild("BountyText")
-                            if nameText and nameText:IsA("TextLabel") and bountyText and bountyText:IsA("TextLabel") then
-                                local displayName = nameText.Text:gsub("^%s+", ""):gsub("%s+$", "")
-                                local bountyStr = bountyText.Text:gsub("[$,]", "")
-                                local bounty = tonumber(bountyStr)
-                                print(string.format("DEBUG Bounty: displayName='%s', bountyStr='%s', bounty=%s", displayName, bountyText.Text, tostring(bounty)))
-                                if bounty and bounty >= 5000 then
-                                    local targetPlayer = nil
-                                    for _, plr in ipairs(game:GetService("Players"):GetPlayers()) do
-                                        if plr.DisplayName == displayName then
-                                            targetPlayer = plr
-                                            break
-                                        end
+    local boardModel = closestBoard:FindFirstChild("Board")
+    if boardModel then
+        local mostWanted = boardModel:FindFirstChild("MostWanted")
+        if mostWanted then
+            local board2 = mostWanted:FindFirstChild("Board")
+            if board2 then
+                for _, playerFrame in ipairs(board2:GetChildren()) do
+                    if playerFrame.Name == "PlayerFrame" then
+                        local nameText = playerFrame:FindFirstChild("NameText")
+                        local bountyText = playerFrame:FindFirstChild("BountyText")
+                        if nameText and nameText:IsA("TextLabel") and bountyText and bountyText:IsA("TextLabel") then
+                            local displayName = nameText.Text:gsub("^%s+", ""):gsub("%s+$", "")
+                            local bountyStr = bountyText.Text:gsub("[$,]", "")
+                            local bounty = tonumber(bountyStr)
+                            if bounty and bounty >= 5000 then
+                                local targetPlayer = nil
+                                for _, plr in ipairs(game:GetService("Players"):GetPlayers()) do
+                                    if plr.DisplayName == displayName then
+                                        targetPlayer = plr
+                                        break
                                     end
-                                    if targetPlayer then
-                                        print(string.format("DEBUG Bounty: Matched player %s (userId=%d)", targetPlayer.Name, targetPlayer.UserId))
-                                        table.insert(bountyPlayers, {
-                                            username = targetPlayer.Name,
-                                            userId = targetPlayer.UserId,
-                                            bounty = bounty,
-                                            displayName = displayName
-                                        })
-                                    else
-                                        print("DEBUG Bounty: No player found with display name " .. displayName)
-                                        table.insert(bountyPlayers, {
-                                            username = displayName,
-                                            userId = nil,
-                                            bounty = bounty,
-                                            displayName = displayName
-                                        })
-                                    end
+                                end
+                                if targetPlayer then
+                                    table.insert(bountyPlayers, {
+                                        username = targetPlayer.Name,
+                                        userId = targetPlayer.UserId,
+                                        bounty = bounty,
+                                        displayName = displayName
+                                    })
+                                else
+                                    table.insert(bountyPlayers, {
+                                        username = displayName,
+                                        userId = nil,
+                                        bounty = bounty,
+                                        displayName = displayName
+                                    })
                                 end
                             end
                         end
                     end
-                else
-                    print("DEBUG Bounty: 'Board' under MostWanted not found")
                 end
-            else
-                print("DEBUG Bounty: 'MostWanted' not found")
             end
-        else
-            print("DEBUG Bounty: 'Board' under BountyBoard not found")
         end
-    else
-        print("DEBUG Bounty: No BountyBoard found")
     end
 
     if #bountyPlayers > 0 then
@@ -919,7 +943,6 @@ local function scanStores(player, jobId, loggedStores)
 
                     elseif storeName == "Cargo_Train" or storeName == "Passenger_Train" then
                         if loggedStores[storeName] then break end
-                        -- Log train if not closed
                         if not isClosed then
                             if webhook and webhook ~= "" then
                                 if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
