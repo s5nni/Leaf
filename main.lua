@@ -725,7 +725,7 @@ local function checkBounties(jobId, loggedSpecials)
                             local displayName = nameText.Text:gsub("^%s+", ""):gsub("%s+$", "")
                             local bountyStr = bountyText.Text:gsub("[$,]", "")
                             local bounty = tonumber(bountyStr)
-                            if bounty and bounty >= 2000 then
+                            if bounty and bounty >= getgenv().RobberyToggles.MinBounty then
                                 local targetPlayer = nil
                                 for _, plr in ipairs(game:GetService("Players"):GetPlayers()) do
                                     if plr.DisplayName == displayName then
