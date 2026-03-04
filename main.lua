@@ -237,29 +237,6 @@ local function getPlaneStatus()
     end
     return nil
 end
-local function getPlaneETA()
-    local plane = workspace:FindFirstChild("Plane")
-    if not plane then return nil end
-    local pos, velocity
-    if plane:IsA("Model") then
-        local primary = plane.PrimaryPart
-        if primary then
-            pos = primary.Position
-            velocity = primary.Velocity
-        else
-            return nil
-        end
-    else
-        pos = plane.Position
-        velocity = plane.Velocity
-    end
-    if not pos or not velocity then return nil end
-    local speed = velocity.Magnitude
-    if speed < 0.1 then return nil end
-    local distToAirport = (pos - AIRPORT).Magnitude
-    local etaSeconds = distToAirport / speed
-    return etaSeconds
-end
 local CARGO_START = Vector3.new(-374.895, -1.093, -6000.34)
 local CARGO_END = Vector3.new(-1659.279, 31.59, 268.128)
 local PASSENGER_START = CARGO_END
@@ -314,6 +291,39 @@ local function teleportToAllMarkers()
     teleportToMarker("Casino")
     teleportToMarker("Tomb")
 end
+
+-- Helper to get train data for a specific train type
+local function getTrainData(storeName)
+    local trains = workspace:FindFirstChild("Trains")
+    if not trains then return nil, nil end
+    for _, loco in ipairs(trains:GetChildren()) do
+        if loco.Name:find("LocomotiveFront") then
+            local model = loco:FindFirstChild("Model")
+            if model then
+                local body = model:FindFirstChild("Body")
+                if body and body:IsA("BasePart") then
+                    local color = body.Color
+                    local r = math.round(color.R * 255)
+                    local g = math.round(color.G * 255)
+                    local b = math.round(color.B * 255)
+                    local pos = body.Position
+                    local isCargo = (r == 255 and g == 144 and b == 78)
+                    if (storeName == "Cargo_Train" and isCargo) or (storeName == "Passenger_Train" and not isCargo) then
+                        local startPos = isCargo and CARGO_START or PASSENGER_START
+                        local endPos = isCargo and CARGO_END or PASSENGER_END
+                        local totalPath = (startPos - endPos).Magnitude * 1.2
+                        local traveled = (pos - startPos).Magnitude
+                        local remaining = math.max(totalPath - traveled, 0)
+                        local timeRemaining = remaining / TRAIN_SPEED
+                        return pos, timeRemaining
+                    end
+                end
+            end
+        end
+    end
+    return nil, nil
+end
+
 local function sendDiscordEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
@@ -354,6 +364,7 @@ local function sendDiscordEmbed(webhookUrl, storeName, status, jobId, timerSecon
     if not ok then return end
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
 end
+
 local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId, timerText)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
@@ -392,6 +403,7 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
     if not ok then return end
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
 end
+
 local function sendPlaneEmbed(webhookUrl, phase, jobId)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
@@ -404,12 +416,14 @@ local function sendPlaneEmbed(webhookUrl, phase, jobId)
     local roleId = getgenv().WebhookConfig.Roles["Cargo_Plane"]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = getgenv().WebhookConfig.Images["Cargo_Plane"]
+    local location = (phase == "Just Spawned") and "Near Spawn Point" or "Approaching Airport"
     local fields = {
-        { name = "📍 Status",      value = phase,               inline = true  },
-        { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
+        { name = "📍 Status",      value = phase,               inline = true },
+        { name = "🗺️ Location",    value = location,            inline = true },
+        { name = "👥 Total Players", value = tostring(totalPlayers), inline = true },
         { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
         { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
-        { name = "🚔 Police",       value = tostring(police),    inline = true  },
+        { name = "🚔 Police",       value = tostring(police),    inline = true },
         { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
     }
     local embed = {
@@ -425,6 +439,60 @@ local function sendPlaneEmbed(webhookUrl, phase, jobId)
     if not ok then return end
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
 end
+
+local function sendTrainEmbed(webhookUrl, storeName, jobId)
+    local pos, timeRemaining = getTrainData(storeName)
+    if not pos or not timeRemaining then return end
+    local now = os.time()
+    local joinLink = getJoinLink(jobId)
+    local teamCounts = getTeamCounts()
+    local criminals = teamCounts.Criminal
+    local police = teamCounts.Police
+    local prisoners = teamCounts.Prisoner
+    local crimAndPris = criminals + prisoners
+    local totalPlayers = crimAndPris + police
+    local roleId = getgenv().WebhookConfig.Roles[storeName]
+    local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
+    local imageUrl = getgenv().WebhookConfig.Images[storeName]
+    local displayName = formatName(storeName)
+    local markers = workspace:FindFirstChild("RobberyMarkers")
+    local nearestMarker = "Unknown"
+    local minDist = math.huge
+    if markers then
+        for _, markerName in ipairs({"Bank", "Casino", "Tomb"}) do
+            local marker = markers:FindFirstChild(markerName)
+            if marker and marker:IsA("BasePart") then
+                local dist = (pos - marker.Position).Magnitude
+                if dist < minDist then
+                    minDist = dist
+                    nearestMarker = markerName
+                end
+            end
+        end
+    end
+    local fields = {
+        { name = "⏳ Closes in",   value = "<t:" .. (now + timeRemaining) .. ":R>", inline = true },
+        { name = "🗺️ Location",    value = nearestMarker,                           inline = true },
+        { name = "👥 Total Players", value = tostring(totalPlayers),                inline = true },
+        { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")",  inline = false },
+        { name = "🏃 Criminals",    value = tostring(crimAndPris),                  inline = true },
+        { name = "🚔 Police",       value = tostring(police),                       inline = true },
+        { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>",                  inline = true },
+    }
+    local embed = {
+        color = (storeName == "Cargo_Train") and 15105570 or 3066993,
+        fields = fields,
+        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+    }
+    if imageUrl then embed.image = { url = imageUrl } end
+    local embedPayload = { embeds = { embed } }
+    if roleMention then embedPayload.content = roleMention end
+    local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
+    if not ok then return end
+    pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
+end
+
 local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
@@ -458,6 +526,7 @@ local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId)
     if not ok then return end
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
 end
+
 local function getGameTimeText()
     local success, label = pcall(function() return game:GetService("Players").LocalPlayer.PlayerGui.AppUI.Buttons.Minimap.Time.Time end)
     if success and label and label:IsA("TextLabel") then return label.Text end
@@ -489,6 +558,7 @@ local function getMansionStatus()
     end
     return status, displayStatus, timeText
 end
+
 local function checkAirdrops(jobId, loggedDrops)
     local webhook = getgenv().WebhookConfig.Webhooks.Airdrop
     if not webhook or webhook == "" then
@@ -562,6 +632,7 @@ local function checkAirdrops(jobId, loggedDrops)
     end
     return loggedDrops
 end
+
 local function scanStores(player, jobId, loggedStores)
     local pg = player and player:FindFirstChild("PlayerGui")
     if not pg then sendLog(LogLevel.ERROR, "Store Scan", "PlayerGui not found.") return loggedStores end
@@ -708,6 +779,18 @@ local function scanStores(player, jobId, loggedStores)
                                 else
                                     sendLog(LogLevel.WARNING, "Robbery — No Webhook", display .. " robbery but no webhook.")
                                 end
+                            elseif storeName == "Cargo_Train" or storeName == "Passenger_Train" then
+                                if webhook and webhook ~= "" then
+                                    if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
+                                        sendTrainEmbed(webhook, storeName, jobId)
+                                        sendLog(LogLevel.SUCCESS, "Train Logged", display .. " under robbery.", {{name="Store",value=display}})
+                                        loggedStores[storeName] = true
+                                    else
+                                        sendLog(LogLevel.INFO, "Train — Toggled Off", display .. " robbery disabled.")
+                                    end
+                                else
+                                    sendLog(LogLevel.WARNING, "Train — No Webhook", display .. " robbery but no webhook.")
+                                end
                             elseif webhook and webhook ~= "" then
                                 if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
                                     sendDiscordEmbed(webhook, storeName, "robbery", jobId)
@@ -735,6 +818,7 @@ local function scanStores(player, jobId, loggedStores)
     })
     return loggedStores
 end
+
 local function checkSpecialRobberies(jobId, loggedSpecials)
     local logged = loggedSpecials or {}
     local planeStatus = getPlaneStatus()
@@ -759,6 +843,7 @@ local function checkSpecialRobberies(jobId, loggedSpecials)
     end
     return logged
 end
+
 local function getServerIP(placeId, serverId)
     local success, response = pcall(function()
         return request({
