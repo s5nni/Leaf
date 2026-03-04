@@ -392,7 +392,7 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
     if not ok then return end
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
 end
-local function sendPlaneEmbed(webhookUrl, status, jobId)
+local function sendPlaneEmbed(webhookUrl, phase, jobId)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
@@ -404,9 +404,9 @@ local function sendPlaneEmbed(webhookUrl, status, jobId)
     local roleId = getgenv().WebhookConfig.Roles["Cargo_Plane"]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = getgenv().WebhookConfig.Images["Cargo_Plane"]
-    local title = (status == "Just Spawned") and "✈️ Cargo Plane Just Spawned!" or "✈️ Cargo Plane Almost Arriving!"
     local fields = {
-        { name = "👥 Total Players", value = tostring(totalPlayers), inline = true },
+        { name = "📍 Status",      value = phase,               inline = true  },
+        { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
         { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
         { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
         { name = "🚔 Police",       value = tostring(police),    inline = true  },
