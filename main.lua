@@ -200,7 +200,6 @@ local PLANE_RADIUS = 500
 local function getPlaneStatus()
     local plane = workspace:FindFirstChild("Plane")
     if not plane then return nil end
-    -- First try movement-based detection
     local pos1
     if plane:IsA("Model") then
         local primary = plane.PrimaryPart
@@ -236,7 +235,6 @@ local function getPlaneStatus()
     if distToAirport2 < distToAirport1 and distToTurn2 < distToTurn1 then
         return "Almost Arriving"
     end
-    -- Fallback: use current position to guess status
     local distToSpawn = (pos2 - PLANE_SPAWN).Magnitude
     local distToTurn = (pos2 - PLANE_TURN).Magnitude
     local distToAirport = (pos2 - AIRPORT).Magnitude
@@ -460,12 +458,9 @@ local function sendBankTruckEmbed(webhookUrl, storeName, status, jobId, timerSec
 end
 
 local function sendBountyEmbed(webhookUrl, bountyPlayers, jobId)
-    -- bountyPlayers: table of tables with fields: username, userId, bounty, displayName
-    -- Sort by bounty descending, take highest for thumbnail
     table.sort(bountyPlayers, function(a, b) return a.bounty > b.bounty end)
     local topPlayer = bountyPlayers[1]
     local thumbnailUrl = topPlayer and topPlayer.userId and ("https://www.roblox.com/headshot-thumbnail/image?userId=" .. topPlayer.userId .. "&width=420&height=420&format=png") or nil
-
     local now = os.time()
     local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
@@ -474,27 +469,24 @@ local function sendBountyEmbed(webhookUrl, bountyPlayers, jobId)
     local prisoners = teamCounts.Prisoner
     local crimAndPris = criminals + prisoners
     local totalPlayers = crimAndPris + police
-
     local roleId = getgenv().WebhookConfig.Roles["Bounty"]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = getgenv().WebhookConfig.Images["Bounty"]
-
-    local fields = {}
-    -- List each player with bounty
     local playerList = ""
     for _, p in ipairs(bountyPlayers) do
         playerList = playerList .. "**" .. (p.username or p.displayName) .. "**: $" .. p.bounty .. "\n"
     end
-    table.insert(fields, { name = "💰 Players with Bounties ($5k+)", value = playerList, inline = false })
-    table.insert(fields, { name = "📊 Total Big Bounty Players", value = tostring(#bountyPlayers), inline = true })
-    table.insert(fields, { name = "👥 Total Players", value = tostring(totalPlayers), inline = true })
-    table.insert(fields, { name = "🔗 Join Server", value = "[Click to Join](" .. joinLink .. ")", inline = false })
-    table.insert(fields, { name = "🏃 Criminals", value = tostring(crimAndPris), inline = true })
-    table.insert(fields, { name = "🚔 Police", value = tostring(police), inline = true })
-    table.insert(fields, { name = "⏱️ Logged", value = "<t:" .. now .. ":R>", inline = true })
-
+    local fields = {
+        { name = "💰 Players with Bounties ($5k+)", value = playerList, inline = false },
+        { name = "📊 Total Big Bounty Players", value = tostring(#bountyPlayers), inline = true },
+        { name = "👥 Total Players", value = tostring(totalPlayers), inline = true },
+        { name = "🔗 Join Server", value = "[Click to Join](" .. joinLink .. ")", inline = false },
+        { name = "🏃 Criminals", value = tostring(crimAndPris), inline = true },
+        { name = "🚔 Police", value = tostring(police), inline = true },
+        { name = "⏱️ Logged", value = "<t:" .. now .. ":R>", inline = true },
+    }
     local embed = {
-        color = 16766720, -- goldish
+        color = 16766720,
         fields = fields,
         footer = { text = "Leaf Logger " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
@@ -502,12 +494,10 @@ local function sendBountyEmbed(webhookUrl, bountyPlayers, jobId)
     if thumbnailUrl then
         embed.thumbnail = { url = thumbnailUrl }
     elseif imageUrl then
-        embed.image = { url = imageUrl } -- fallback
+        embed.image = { url = imageUrl }
     end
-
     local embedPayload = { embeds = { embed } }
     if roleMention then embedPayload.content = roleMention end
-
     local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
     if not ok then return end
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
@@ -539,10 +529,6 @@ local function sendCrownJewelEmbed(webhookUrl, storeName, status, jobId, code, t
     }
     if timerSeconds then
         table.insert(fields, 1, { name = "⏳ Closes in", value = "<t:" .. (now + timerSeconds) .. ":R>", inline = true })
-    else
-        -- Not under robbery, no timer
-        -- Optionally add a field saying "Not Started"? The user requested, but maybe not needed.
-        -- We'll add a field only if we want to show "Not Started". For now, omit.
     end
     local embed = {
         color = color,
@@ -594,45 +580,9 @@ local function sendPlaneEmbed(webhookUrl, phase, jobId)
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
 end
 
+-- Train embed temporarily reverted to generic
 local function sendTrainEmbed(webhookUrl, storeName, jobId)
-    local pos = getTrainData(storeName)
-    if not pos then
-        print("DEBUG: sendTrainEmbed called but no position for " .. storeName)
-        return
-    end
-    local now = os.time()
-    local joinLink = getJoinLink(jobId)
-    local teamCounts = getTeamCounts()
-    local criminals = teamCounts.Criminal
-    local police = teamCounts.Police
-    local prisoners = teamCounts.Prisoner
-    local crimAndPris = criminals + prisoners
-    local totalPlayers = crimAndPris + police
-    local roleId = getgenv().WebhookConfig.Roles[storeName]
-    local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
-    local imageUrl = getgenv().WebhookConfig.Images[storeName]
-    local locationName = getClosestMarkerName(pos)
-    local isCargo = (storeName == "Cargo_Train")
-    local fields = {
-        { name = "📍 Location",    value = locationName,                           inline = true },
-        { name = "👥 Total Players", value = tostring(totalPlayers),                inline = true },
-        { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")",  inline = false },
-        { name = "🏃 Criminals",    value = tostring(crimAndPris),                  inline = true },
-        { name = "🚔 Police",       value = tostring(police),                       inline = true },
-        { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>",                  inline = true },
-    }
-    local embed = {
-        color = isCargo and 15105570 or 3066993,
-        fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
-        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-    }
-    if imageUrl then embed.image = { url = imageUrl } end
-    local embedPayload = { embeds = { embed } }
-    if roleMention then embedPayload.content = roleMention end
-    local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
-    if not ok then return end
-    pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
+    sendJewelryStoreEmbed(webhookUrl, storeName, "robbery", jobId) -- treat as robbery
 end
 
 local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId)
@@ -713,7 +663,7 @@ end
 -- =============================================
 
 local function checkBounties(jobId, loggedSpecials)
-    if loggedSpecials.Bounty then return loggedSpecials end -- already logged this server
+    if loggedSpecials.Bounty then return loggedSpecials end
     if getgenv().RobberyToggles and not getgenv().RobberyToggles.Bounty then return loggedSpecials end
 
     local webhook = getgenv().WebhookConfig.Webhooks["Bounty"]
@@ -723,7 +673,6 @@ local function checkBounties(jobId, loggedSpecials)
     end
 
     local bountyPlayers = {}
-    -- Find the first BountyBoard (use only one)
     local board = workspace:FindFirstChild("BountyBoard")
     if board and board:IsA("Model") then
         local boardModel = board:FindFirstChild("Board")
@@ -737,12 +686,11 @@ local function checkBounties(jobId, loggedSpecials)
                             local nameText = playerFrame:FindFirstChild("NameText")
                             local bountyText = playerFrame:FindFirstChild("BountyText")
                             if nameText and nameText:IsA("TextLabel") and bountyText and bountyText:IsA("TextLabel") then
-                                local displayName = nameText.Text:gsub("^%s+", ""):gsub("%s+$", "") -- trim
-                                local bountyStr = bountyText.Text:gsub("[$,]", "") -- remove $ and commas
+                                local displayName = nameText.Text:gsub("^%s+", ""):gsub("%s+$", "")
+                                local bountyStr = bountyText.Text:gsub("[$,]", "")
                                 local bounty = tonumber(bountyStr)
                                 print(string.format("DEBUG Bounty: displayName='%s', bountyStr='%s', bounty=%s", displayName, bountyText.Text, tostring(bounty)))
                                 if bounty and bounty >= 5000 then
-                                    -- Find player with that display name
                                     local targetPlayer = nil
                                     for _, plr in ipairs(game:GetService("Players"):GetPlayers()) do
                                         if plr.DisplayName == displayName then
@@ -760,7 +708,6 @@ local function checkBounties(jobId, loggedSpecials)
                                         })
                                     else
                                         print("DEBUG Bounty: No player found with display name " .. displayName)
-                                        -- Player not in server (maybe left?), still include with display name but no userId
                                         table.insert(bountyPlayers, {
                                             username = displayName,
                                             userId = nil,
@@ -930,32 +877,22 @@ local function scanStores(player, jobId, loggedStores)
                     elseif isClosed then closedCount = closedCount + 1
                     else robberyCount = robberyCount + 1 end
 
-                    -- Debug for trains
-                    if storeName == "Cargo_Train" or storeName == "Passenger_Train" then
-                        print(string.format("DEBUG Train Icon: %s RGB(%d,%d,%d) isOpen=%s isClosed=%s isRobbery=%s", storeName, r, g, b, tostring(isOpen), tostring(isClosed), tostring(isRobbery)))
-                    end
-
                     if storeName == "Crown_Jewel" then
                         if getgenv().RobberyToggles and not getgenv().RobberyToggles[storeName] then break end
                         if not (isOpen or isRobbery) then break end
                         if loggedStores[storeName] then break end
-
-                        -- Enhanced code retrieval with death handling
+                        teleportToMarker("Casino")
                         local code = nil
                         local maxAttempts = 30
                         local attempt = 0
                         while not code and attempt < maxAttempts do
-                            -- Teleport to casino (will wait for character if dead)
                             teleportToMarker("Casino")
                             code = getCrownJewelCode()
-                            if code and code ~= "" then
-                                break
-                            end
+                            if code and code ~= "" then break end
                             attempt = attempt + 1
                             task.wait(0.5)
                         end
                         if not code or code == "" then code = "Fail" end
-
                         local timer = getCrownJewelTimer()
                         if timer and timer <= 60 then
                             sendLog(LogLevel.INFO, "Crown Jewel Skipped", "Timer too low: " .. timer .. "s")
@@ -982,7 +919,7 @@ local function scanStores(player, jobId, loggedStores)
 
                     elseif storeName == "Cargo_Train" or storeName == "Passenger_Train" then
                         if loggedStores[storeName] then break end
-                        -- Log train if not closed (i.e., any color except pure red)
+                        -- Log train if not closed
                         if not isClosed then
                             if webhook and webhook ~= "" then
                                 if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
@@ -1023,7 +960,6 @@ local function scanStores(player, jobId, loggedStores)
                         sendLog(LogLevel.INFO, "Cargo Plane Robbery Skipped", "Cargo Plane robbery not logged in store scan.")
 
                     elseif storeName == "Bounty" then
-                        -- Bounty is handled in special robberies
                         sendLog(LogLevel.INFO, "Bounty", "Skipping store scan, will be logged by special robberies.")
 
                     else
