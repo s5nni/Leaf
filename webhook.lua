@@ -68,5 +68,6 @@ getgenv().WebhookConfig = {
         RedAirdrop    = "https://media.discordapp.net/attachments/1444748474183712870/1478163115907616828/AIRDROP.jpg?ex=69a7662d&is=69a614ad&hm=b7a615a88a3d52b64e3adc1c39cc2e78753944c65894b5e727a23e7c0fc78347&=&format=webp&width=1489&height=838",
         BrownAirdrop  = "https://media.discordapp.net/attachments/1444748474183712870/1478163115907616828/AIRDROP.jpg?ex=69a7662d&is=69a614ad&hm=b7a615a88a3d52b64e3adc1c39cc2e78753944c65894b5e727a23e7c0fc78347&=&format=webp&width=1489&height=838",
         BlueAirdrop   = "https://media.discordapp.net/attachments/1444748474183712870/1478163115907616828/AIRDROP.jpg?ex=69a7662d&is=69a614ad&hm=b7a615a88a3d52b64e3adc1c39cc2e78753944c65894b5e727a23e7c0fc78347&=&format=webp&width=1489&height=838",
+        Bounty        = "",
     }
 }
