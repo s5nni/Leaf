@@ -50,23 +50,10 @@ local LogLevel = {
     ERROR   = { label = "❌ Error",      color = 15158332 },
     HOP     = { label = "🔀 Server Hop", color = 10181046 },
 }
-local function getJoinLink(jobId, storeName)
+local function getJoinLink(jobId)
     local placeId = game.PlaceId
     local http = game:GetService("HttpService")
-    
-    -- Get the image URL for this robbery from webhook config
-    local imageUrl = getgenv().WebhookConfig.Images[storeName] or ""
-    
-    -- Build the URL with all three parameters
-    local baseUrl = "https://s5nni.github.io/Leaf-Joiner/"
-    local params = string.format(
-        "?placeId=%s&jobId=%s&imageUrl=%s",
-        tostring(placeId),
-        http:UrlEncode(jobId),
-        http:UrlEncode(imageUrl)
-    )
-    
-    return baseUrl .. params
+    return "https://s5nni.github.io/Leaf-Joiner/?placeId=" .. placeId .. "&jobId=" .. http:UrlEncode(jobId)
 end
 local function sendLog(level, title, description, fields)
     local webhook = getgenv().WebhookConfig.Webhooks.Log
@@ -213,6 +200,7 @@ local PLANE_RADIUS = 500
 local function getPlaneStatus()
     local plane = workspace:FindFirstChild("Plane")
     if not plane then return nil end
+    -- First try movement-based detection
     local pos1
     if plane:IsA("Model") then
         local primary = plane.PrimaryPart
@@ -248,7 +236,19 @@ local function getPlaneStatus()
     if distToAirport2 < distToAirport1 and distToTurn2 < distToTurn1 then
         return "Almost Arriving"
     end
-    return nil
+    -- Fallback: use current position to guess status
+    local distToSpawn = (pos2 - PLANE_SPAWN).Magnitude
+    local distToTurn = (pos2 - PLANE_TURN).Magnitude
+    local distToAirport = (pos2 - AIRPORT).Magnitude
+    if distToSpawn < distToTurn and distToSpawn < distToAirport then
+        return "Just Spawned"
+    elseif distToTurn < distToSpawn and distToTurn < distToAirport then
+        return "Almost Arriving"
+    elseif distToAirport < distToSpawn and distToAirport < distToTurn then
+        return "Landed"
+    else
+        return "In Flight"
+    end
 end
 local CARGO_START = Vector3.new(-374.895, -1.093, -6000.34)
 local CARGO_END = Vector3.new(-1659.279, 31.59, 268.128)
@@ -365,7 +365,7 @@ end
 
 local function sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
     local now = os.time()
-    local joinLink = getJoinLink(jobId, storeName)
+    local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
     local criminals = teamCounts.Criminal
     local police = teamCounts.Police
@@ -422,7 +422,7 @@ end
 
 local function sendMansionEmbed(webhookUrl, storeName, status, displayStatus, timeText, jobId, timerSeconds)
     local now = os.time()
-    local joinLink = getJoinLink(jobId, storeName)
+    local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
     local criminals = teamCounts.Criminal
     local police = teamCounts.Police
@@ -467,7 +467,7 @@ local function sendBountyEmbed(webhookUrl, bountyPlayers, jobId)
     local thumbnailUrl = topPlayer and topPlayer.userId and ("https://www.roblox.com/headshot-thumbnail/image?userId=" .. topPlayer.userId .. "&width=420&height=420&format=png") or nil
 
     local now = os.time()
-    local joinLink = getJoinLink(jobId, storeName)
+    local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
     local criminals = teamCounts.Criminal
     local police = teamCounts.Police
@@ -515,7 +515,7 @@ end
 
 local function sendCrownJewelEmbed(webhookUrl, storeName, status, jobId, code, timerSeconds)
     local now = os.time()
-    local joinLink = getJoinLink(jobId, storeName)
+    local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
     local criminals = teamCounts.Criminal
     local police = teamCounts.Police
@@ -539,6 +539,10 @@ local function sendCrownJewelEmbed(webhookUrl, storeName, status, jobId, code, t
     }
     if timerSeconds then
         table.insert(fields, 1, { name = "⏳ Closes in", value = "<t:" .. (now + timerSeconds) .. ":R>", inline = true })
+    else
+        -- Not under robbery, no timer
+        -- Optionally add a field saying "Not Started"? The user requested, but maybe not needed.
+        -- We'll add a field only if we want to show "Not Started". For now, omit.
     end
     local embed = {
         color = color,
@@ -556,7 +560,7 @@ end
 
 local function sendPlaneEmbed(webhookUrl, phase, jobId)
     local now = os.time()
-    local joinLink = getJoinLink(jobId, storeName)
+    local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
     local criminals = teamCounts.Criminal
     local police = teamCounts.Police
@@ -566,7 +570,7 @@ local function sendPlaneEmbed(webhookUrl, phase, jobId)
     local roleId = getgenv().WebhookConfig.Roles["Cargo_Plane"]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = getgenv().WebhookConfig.Images["Cargo_Plane"]
-    local location = (phase == "Just Spawned") and "Near Spawn Point" or "Approaching Airport"
+    local location = (phase == "Just Spawned") and "Near Spawn Point" or (phase == "Almost Arriving" and "Approaching Airport") or "Unknown"
     local fields = {
         { name = "📍 Status",      value = phase,               inline = true },
         { name = "📍 Location",    value = location,            inline = true },
@@ -597,7 +601,7 @@ local function sendTrainEmbed(webhookUrl, storeName, jobId)
         return
     end
     local now = os.time()
-    local joinLink = getJoinLink(jobId, storeName)
+    local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
     local criminals = teamCounts.Criminal
     local police = teamCounts.Police
@@ -633,7 +637,7 @@ end
 
 local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId)
     local now = os.time()
-    local joinLink = getJoinLink(jobId, storeName)
+    local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
     local criminals = teamCounts.Criminal
     local police = teamCounts.Police
@@ -644,7 +648,7 @@ local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId)
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = getgenv().WebhookConfig.Images["Oil_Rig"]
     local fields = {
-        { name = "⏳ Closes in",   value = "<t:" .. (now + timeRemaining) .. ":R>", inline = true },
+        { name = "⏳ Closes in",   value = timeRemaining and ("<t:" .. (now + timeRemaining) .. ":R>") or "Not Started", inline = true },
         { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
         { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
         { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
@@ -667,7 +671,7 @@ end
 
 local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId, timerText)
     local now = os.time()
-    local joinLink = getJoinLink(jobId, storeName)
+    local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
     local criminals = teamCounts.Criminal
     local police = teamCounts.Police
@@ -705,7 +709,7 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
 end
 
 -- =============================================
---           BOUNTY DETECTION (FIXED)
+--           BOUNTY DETECTION (DEBUG)
 -- =============================================
 
 local function checkBounties(jobId, loggedSpecials)
@@ -736,6 +740,7 @@ local function checkBounties(jobId, loggedSpecials)
                                 local displayName = nameText.Text:gsub("^%s+", ""):gsub("%s+$", "") -- trim
                                 local bountyStr = bountyText.Text:gsub("[$,]", "") -- remove $ and commas
                                 local bounty = tonumber(bountyStr)
+                                print(string.format("DEBUG Bounty: displayName='%s', bountyStr='%s', bounty=%s", displayName, bountyText.Text, tostring(bounty)))
                                 if bounty and bounty >= 5000 then
                                     -- Find player with that display name
                                     local targetPlayer = nil
@@ -746,6 +751,7 @@ local function checkBounties(jobId, loggedSpecials)
                                         end
                                     end
                                     if targetPlayer then
+                                        print(string.format("DEBUG Bounty: Matched player %s (userId=%d)", targetPlayer.Name, targetPlayer.UserId))
                                         table.insert(bountyPlayers, {
                                             username = targetPlayer.Name,
                                             userId = targetPlayer.UserId,
@@ -753,6 +759,7 @@ local function checkBounties(jobId, loggedSpecials)
                                             displayName = displayName
                                         })
                                     else
+                                        print("DEBUG Bounty: No player found with display name " .. displayName)
                                         -- Player not in server (maybe left?), still include with display name but no userId
                                         table.insert(bountyPlayers, {
                                             username = displayName,
@@ -765,11 +772,17 @@ local function checkBounties(jobId, loggedSpecials)
                             end
                         end
                     end
+                else
+                    print("DEBUG Bounty: 'Board' under MostWanted not found")
                 end
+            else
+                print("DEBUG Bounty: 'MostWanted' not found")
             end
+        else
+            print("DEBUG Bounty: 'Board' under BountyBoard not found")
         end
     else
-        sendLog(LogLevel.INFO, "Bounty Scan", "No BountyBoard found.")
+        print("DEBUG Bounty: No BountyBoard found")
     end
 
     if #bountyPlayers > 0 then
@@ -969,20 +982,21 @@ local function scanStores(player, jobId, loggedStores)
 
                     elseif storeName == "Cargo_Train" or storeName == "Passenger_Train" then
                         if loggedStores[storeName] then break end
-                        if isRobbery then
+                        -- Log train if not closed (i.e., any color except pure red)
+                        if not isClosed then
                             if webhook and webhook ~= "" then
                                 if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
                                     sendTrainEmbed(webhook, storeName, jobId)
                                     loggedStores[storeName] = true
-                                    sendLog(LogLevel.SUCCESS, "Train Logged", display .. " under robbery.", {{name="Store",value=display}})
+                                    sendLog(LogLevel.SUCCESS, "Train Logged", display .. " active.", {{name="Store",value=display}})
                                 else
-                                    sendLog(LogLevel.INFO, "Train — Toggled Off", display .. " robbery disabled.")
+                                    sendLog(LogLevel.INFO, "Train — Toggled Off", display .. " active but disabled.")
                                 end
                             else
-                                sendLog(LogLevel.WARNING, "Train — No Webhook", display .. " robbery but no webhook.")
+                                sendLog(LogLevel.WARNING, "Train — No Webhook", display .. " active but no webhook.")
                             end
                         else
-                            sendLog(LogLevel.INFO, "Train Not Robbing", display .. " is not under robbery.")
+                            sendLog(LogLevel.INFO, "Train Not Active", display .. " is closed.")
                         end
 
                     elseif storeName == "Bank_Truck" then
