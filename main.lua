@@ -381,32 +381,23 @@ local function sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timer
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
 end
 
--- For Power Plant, Museum, Rising Bank, Crater Bank, Tomb, etc., we can use the same structure initially,
--- but we may differentiate later. We'll create aliases or separate functions.
--- To keep it DRY, we can use a generic function with robbery-specific overrides, but for clarity we'll define each.
-
 local function sendPowerPlantEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
-    sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds) -- same layout for now
+    sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
 end
-
 local function sendMuseumEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
     sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
 end
-
 local function sendRisingBankEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
     sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
 end
-
 local function sendCraterBankEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
     sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
 end
-
 local function sendTombEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
     sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
 end
 
 local function sendMansionEmbed(webhookUrl, storeName, status, displayStatus, timeText, jobId, timerSeconds)
-    -- Mansion has its own custom layout (with game time and status)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
@@ -442,15 +433,13 @@ local function sendMansionEmbed(webhookUrl, storeName, status, displayStatus, ti
 end
 
 local function sendBankTruckEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
-    sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds) -- same as generic
-end
-
-local function sendBountyEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
-    -- Placeholder, same as generic for now
     sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
 end
 
--- Crown Jewel has its own custom embed (with code and timer)
+local function sendBountyEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
+    sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
+end
+
 local function sendCrownJewelEmbed(webhookUrl, storeName, status, jobId, code, timerSeconds)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
@@ -492,7 +481,6 @@ local function sendCrownJewelEmbed(webhookUrl, storeName, status, jobId, code, t
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
 end
 
--- Plane embed (already exists)
 local function sendPlaneEmbed(webhookUrl, phase, jobId)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
@@ -529,7 +517,6 @@ local function sendPlaneEmbed(webhookUrl, phase, jobId)
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
 end
 
--- Train embed (modified: no timer, only location)
 local function sendTrainEmbed(webhookUrl, storeName, jobId)
     local pos = getTrainData(storeName)
     if not pos then return end
@@ -568,7 +555,6 @@ local function sendTrainEmbed(webhookUrl, storeName, jobId)
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
 end
 
--- Oil Rig embed (already exists)
 local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
@@ -603,7 +589,6 @@ local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId)
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
 end
 
--- Airdrop embed (already exists)
 local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId, timerText)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
@@ -828,7 +813,6 @@ local function scanStores(player, jobId, loggedStores)
                                 sendLog(LogLevel.WARNING, "Train — No Webhook", display .. " robbery but no webhook.")
                             end
                         else
-                            -- Trains are only logged when under robbery
                             sendLog(LogLevel.INFO, "Train Not Robbing", display .. " is not under robbery.")
                         end
 
@@ -850,15 +834,12 @@ local function scanStores(player, jobId, loggedStores)
                         end
 
                     elseif storeName == "Oil_Rig" then
-                        -- Oil Rig handled in special robberies, skip here
                         sendLog(LogLevel.INFO, "Oil Rig Robbery", "Skipping store scan, will be logged by special robberies.")
 
                     elseif storeName == "Cargo_Plane" then
-                        -- Plane handled in special robberies
                         sendLog(LogLevel.INFO, "Cargo Plane Robbery Skipped", "Cargo Plane robbery not logged in store scan.")
 
                     elseif storeName == "Bounty" then
-                        -- WIP
                         if loggedStores[storeName] then break end
                         if isRobbery then
                             if webhook and webhook ~= "" then
@@ -875,12 +856,10 @@ local function scanStores(player, jobId, loggedStores)
                         end
 
                     else
-                        -- All other robberies (Jewelry, Power Plant, Museum, etc.)
                         if loggedStores[storeName] then break end
                         if isOpen then
                             if webhook and webhook ~= "" then
                                 if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
-                                    -- Call appropriate embed function based on storeName
                                     if storeName == "Jewelry_Store" then
                                         sendJewelryStoreEmbed(webhook, storeName, "open", jobId)
                                     elseif storeName == "Power_Plant" then
@@ -894,7 +873,6 @@ local function scanStores(player, jobId, loggedStores)
                                     elseif storeName == "Tomb" then
                                         sendTombEmbed(webhook, storeName, "open", jobId)
                                     else
-                                        -- Fallback to generic (should not happen)
                                         sendJewelryStoreEmbed(webhook, storeName, "open", jobId)
                                     end
                                     loggedStores[storeName] = true
@@ -976,7 +954,7 @@ local function checkSpecialRobberies(jobId, loggedSpecials)
 end
 
 -- =============================================
---           SERVER HOP LOGIC (unchanged)
+--           SERVER HOP LOGIC
 -- =============================================
 local function getServerIP(placeId, serverId)
     local success, response = pcall(function()
@@ -1059,27 +1037,42 @@ local function hasS5nniPlayer()
     return false
 end
 local function hopToNewServer(player)
-    if getgenv().TeleportInProgress then sendLog(LogLevel.WARNING, "Teleport Already in Progress", "Skipping duplicate teleport request.") return end
+    if getgenv().TeleportInProgress then
+        sendLog(LogLevel.WARNING, "Teleport Already in Progress", "Skipping duplicate teleport request.")
+        return
+    end
     getgenv().TeleportInProgress = true
+
     local placeId = game.PlaceId
     local oldJobId = game.JobId
     local visited = loadVisitedServers()
     visited[oldJobId] = os.time()
     saveVisitedServers(visited)
     getgenv().VisitedServers = visited
+
     local targetJobId = getTargetServer(placeId, oldJobId)
     local TeleportService = game:GetService("TeleportService")
+
     pcall(function() clear_teleport_queue() end)
     pcall(function() queue_on_teleport(getgenv()._ServerHopSource) end)
+    task.wait(0.1)
+
     if targetJobId then
         sendLog(LogLevel.HOP, "Teleporting", "Attempting teleport to target server.", { { name = "Target", value = targetJobId, inline = false } })
-        local success, err = pcall(function() TeleportService:TeleportToPlaceInstance(placeId, targetJobId, player) end)
+
+        local success, err = pcall(function()
+            TeleportService:TeleportToPlaceInstance(placeId, targetJobId, player)
+        end)
+
         if not success then
-            sendLog(LogLevel.ERROR, "Teleport Failed", "TeleportToPlaceInstance failed. Falling back to random server.", { { name = "Error", value = tostring(err), inline = false } })
+            sendLog(LogLevel.ERROR, "Teleport Failed", "TeleportToPlaceInstance failed. Falling back to random server.", {
+                { name = "Error", value = tostring(err), inline = false }
+            })
             getgenv().TeleportInProgress = false
             pcall(function() TeleportService:Teleport(placeId, player) end)
             return
         end
+
         task.spawn(function()
             task.wait(30)
             if game.JobId == oldJobId then
@@ -1090,6 +1083,7 @@ local function hopToNewServer(player)
                 getgenv().TeleportInProgress = false
             end
         end)
+
     else
         sendLog(LogLevel.WARNING, "No Target Server", "No valid server found. Falling back to random server teleport.")
         getgenv().TeleportInProgress = false
