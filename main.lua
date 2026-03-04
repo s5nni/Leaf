@@ -457,6 +457,7 @@ local function sendBankTruckEmbed(webhookUrl, storeName, status, jobId, timerSec
     sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
 end
 
+-- Custom bounty embed (enhanced)
 local function sendBountyEmbed(webhookUrl, bountyPlayers, jobId)
     table.sort(bountyPlayers, function(a, b) return a.bounty > b.bounty end)
     local topPlayer = bountyPlayers[1]
@@ -477,7 +478,7 @@ local function sendBountyEmbed(webhookUrl, bountyPlayers, jobId)
         playerList = playerList .. "**" .. (p.username or p.displayName) .. "**: $" .. p.bounty .. "\n"
     end
     local fields = {
-        { name = "💰 Players with Bounties ($5k+)", value = playerList, inline = false },
+        { name = "💰 Players with Bounties", value = playerList, inline = false },
         { name = "📊 Total Big Bounty Players", value = tostring(#bountyPlayers), inline = true },
         { name = "👥 Total Players", value = tostring(totalPlayers), inline = true },
         { name = "🔗 Join Server", value = "[Click to Join](" .. joinLink .. ")", inline = false },
@@ -499,7 +500,11 @@ local function sendBountyEmbed(webhookUrl, bountyPlayers, jobId)
     local embedPayload = { embeds = { embed } }
     if roleMention then embedPayload.content = roleMention end
     local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
-    if not ok then return end
+    if not ok then
+        -- Fallback to generic embed if custom fails
+        sendJewelryStoreEmbed(webhookUrl, "Bounty", "active", jobId)
+        return
+    end
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
 end
 
@@ -672,6 +677,11 @@ local function checkBounties(jobId, loggedSpecials)
         return loggedSpecials
     end
 
+    local minBounty = 5000
+    if getgenv().RobberyToggles and getgenv().RobberyToggles.MinBounty then
+        minBounty = getgenv().RobberyToggles.MinBounty
+    end
+
     -- Find closest BountyBoard
     local localPlayer = game:GetService("Players").LocalPlayer
     local hrp = localPlayer and localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -725,7 +735,7 @@ local function checkBounties(jobId, loggedSpecials)
                             local displayName = nameText.Text:gsub("^%s+", ""):gsub("%s+$", "")
                             local bountyStr = bountyText.Text:gsub("[$,]", "")
                             local bounty = tonumber(bountyStr)
-                            if bounty and bounty >= getgenv().RobberyToggles.MinBounty then
+                            if bounty and bounty >= minBounty then
                                 local targetPlayer = nil
                                 for _, plr in ipairs(game:GetService("Players"):GetPlayers()) do
                                     if plr.DisplayName == displayName then
@@ -759,9 +769,9 @@ local function checkBounties(jobId, loggedSpecials)
     if #bountyPlayers > 0 then
         sendBountyEmbed(webhook, bountyPlayers, jobId)
         loggedSpecials.Bounty = true
-        sendLog(LogLevel.SUCCESS, "Bounty Logged", "Found " .. #bountyPlayers .. " player(s) with bounty ≥ $5,000.")
+        sendLog(LogLevel.SUCCESS, "Bounty Logged", "Found " .. #bountyPlayers .. " player(s) with bounty ≥ $" .. minBounty .. ".")
     else
-        sendLog(LogLevel.INFO, "Bounty Scan", "No players with bounty ≥ $5,000 found.")
+        sendLog(LogLevel.INFO, "Bounty Scan", "No players with bounty ≥ $" .. minBounty .. " found.")
     end
 
     return loggedSpecials
