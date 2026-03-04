@@ -196,20 +196,46 @@ end
 local PLANE_SPAWN = Vector3.new(3727.843, 594.45, -509.572)
 local PLANE_TURN = Vector3.new(-3145.715, 333.56, 2331.847)
 local AIRPORT = Vector3.new(-0.208, -54.296, -0.231)
-local APPROACH_RADIUS = 2000
-local function isPlaneActive()
+local PLANE_RADIUS = 500
+local function getPlaneStatus()
     local plane = workspace:FindFirstChild("Plane")
-    if not plane then return false end
-    local pos
+    if not plane then return nil end
+    local pos1
     if plane:IsA("Model") then
         local primary = plane.PrimaryPart
-        if primary then pos = primary.Position else return false end
+        if primary then pos1 = primary.Position else return nil end
     else
-        pos = plane.Position
+        pos1 = plane.Position
     end
-    local distToAirport = (pos - AIRPORT).Magnitude
-    local distToTurn = (pos - PLANE_TURN).Magnitude
-    return distToAirport <= APPROACH_RADIUS and distToAirport < distToTurn
+    task.wait(3)
+    local pos2
+    if plane:IsA("Model") then
+        local primary = plane.PrimaryPart
+        if primary then pos2 = primary.Position else return nil end
+    else
+        pos2 = plane.Position
+    end
+    if not pos1 or not pos2 then return nil end
+    local distToSpawn1 = (pos1 - PLANE_SPAWN).Magnitude
+    local distToTurn1 = (pos1 - PLANE_TURN).Magnitude
+    local distToAirport1 = (pos1 - AIRPORT).Magnitude
+    local distToSpawn2 = (pos2 - PLANE_SPAWN).Magnitude
+    local distToTurn2 = (pos2 - PLANE_TURN).Magnitude
+    local distToAirport2 = (pos2 - AIRPORT).Magnitude
+    if distToSpawn1 <= PLANE_RADIUS then
+        if distToSpawn2 < distToSpawn1 and distToTurn2 < distToTurn1 then
+            return "Just Spawned"
+        end
+    end
+    if distToTurn1 <= PLANE_RADIUS then
+        if distToTurn2 < distToTurn1 and distToAirport2 < distToAirport1 then
+            return "Almost Arriving"
+        end
+    end
+    if distToAirport2 < distToAirport1 and distToTurn2 < distToTurn1 then
+        return "Almost Arriving"
+    end
+    return nil
 end
 local function getPlaneETA()
     local plane = workspace:FindFirstChild("Plane")
@@ -366,7 +392,7 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
     if not ok then return end
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
 end
-local function sendPlaneEmbed(webhookUrl, jobId)
+local function sendPlaneEmbed(webhookUrl, status, jobId)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
@@ -378,7 +404,7 @@ local function sendPlaneEmbed(webhookUrl, jobId)
     local roleId = getgenv().WebhookConfig.Roles["Cargo_Plane"]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = getgenv().WebhookConfig.Images["Cargo_Plane"]
-    local eta = getPlaneETA()
+    local title = (status == "Just Spawned") and "✈️ Cargo Plane Just Spawned!" or "✈️ Cargo Plane Almost Arriving!"
     local fields = {
         { name = "👥 Total Players", value = tostring(totalPlayers), inline = true },
         { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
@@ -386,11 +412,6 @@ local function sendPlaneEmbed(webhookUrl, jobId)
         { name = "🚔 Police",       value = tostring(police),    inline = true  },
         { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
     }
-    if eta then
-        table.insert(fields, 1, { name = "✈️ Arrives in", value = "<t:" .. (now + eta) .. ":R>", inline = true })
-    else
-        table.insert(fields, 1, { name = "✈️ Arrives in", value = "Unknown", inline = true })
-    end
     local embed = {
         color = 3447003,
         fields = fields,
@@ -716,12 +737,13 @@ local function scanStores(player, jobId, loggedStores)
 end
 local function checkSpecialRobberies(jobId, loggedSpecials)
     local logged = loggedSpecials or {}
-    if isPlaneActive() and not logged.Plane then
+    local planeStatus = getPlaneStatus()
+    if planeStatus and not logged.Plane then
         local webhook = getgenv().WebhookConfig.Webhooks["Cargo_Plane"]
         if webhook and webhook ~= "" then
-            sendPlaneEmbed(webhook, jobId)
+            sendPlaneEmbed(webhook, planeStatus, jobId)
             logged.Plane = true
-            sendLog(LogLevel.SUCCESS, "Plane Logged", "Cargo plane is on approach.")
+            sendLog(LogLevel.SUCCESS, "Plane Logged", "Cargo plane status: " .. planeStatus)
         end
     end
     local oilTime = getOilRigTimer()
