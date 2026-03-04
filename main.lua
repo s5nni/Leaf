@@ -1,4 +1,4 @@
-lloadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/webhook.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/webhook.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/whitelist.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/robberies.lua"))()
 local BOT_VERSION = loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/version.lua"))()
@@ -292,7 +292,7 @@ local function teleportToAllMarkers()
     teleportToMarker("Tomb")
 end
 
--- Helper to get train data for a specific train type (storeName is the webhook key: "train" for cargo, "Passenger_Train" for passenger)
+-- Helper to get train data for a specific train type
 local function getTrainData(storeName)
     local trains = workspace:FindFirstChild("Trains")
     if not trains then return nil, nil end
@@ -308,21 +308,14 @@ local function getTrainData(storeName)
                     local b = math.round(color.B * 255)
                     local pos = body.Position
                     local isCargo = (r == 255 and g == 144 and b == 78)
-                    -- Match based on storeName: "train" for cargo, "Passenger_Train" for passenger
-                    if (storeName == "train" and isCargo) or (storeName == "Passenger_Train" and not isCargo) then
-                        local startPos = isCargo and CARGO_START or PASSENGER_START
-                        local endPos = isCargo and CARGO_END or PASSENGER_END
-                        local totalPath = (startPos - endPos).Magnitude * 1.2
-                        local traveled = (pos - startPos).Magnitude
-                        local remaining = math.max(totalPath - traveled, 0)
-                        local timeRemaining = remaining / TRAIN_SPEED
-                        return pos, timeRemaining
+                    if (storeName == "Cargo_Train" and isCargo) or (storeName == "Passenger_Train" and not isCargo) then
+                        return pos
                     end
                 end
             end
         end
     end
-    return nil, nil
+    return nil
 end
 
 -- Helper to find closest RobberyMarker to a position (any child)
@@ -343,7 +336,11 @@ local function getClosestMarkerName(pos)
     return closestName
 end
 
-local function sendDiscordEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
+-- =============================================
+--           CUSTOM EMBED FUNCTIONS
+-- =============================================
+
+local function sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
@@ -384,6 +381,229 @@ local function sendDiscordEmbed(webhookUrl, storeName, status, jobId, timerSecon
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
 end
 
+-- For Power Plant, Museum, Rising Bank, Crater Bank, Tomb, etc., we can use the same structure initially,
+-- but we may differentiate later. We'll create aliases or separate functions.
+-- To keep it DRY, we can use a generic function with robbery-specific overrides, but for clarity we'll define each.
+
+local function sendPowerPlantEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
+    sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds) -- same layout for now
+end
+
+local function sendMuseumEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
+    sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
+end
+
+local function sendRisingBankEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
+    sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
+end
+
+local function sendCraterBankEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
+    sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
+end
+
+local function sendTombEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
+    sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
+end
+
+local function sendMansionEmbed(webhookUrl, storeName, status, displayStatus, timeText, jobId, timerSeconds)
+    -- Mansion has its own custom layout (with game time and status)
+    local now = os.time()
+    local joinLink = getJoinLink(jobId)
+    local teamCounts = getTeamCounts()
+    local criminals = teamCounts.Criminal
+    local police = teamCounts.Police
+    local prisoners = teamCounts.Prisoner
+    local crimAndPris = criminals + prisoners
+    local totalPlayers = crimAndPris + police
+    local roleId = getgenv().WebhookConfig.Roles[storeName]
+    local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
+    local imageUrl = getgenv().WebhookConfig.Images[storeName]
+    local fields = {
+        { name = "⏰ Game Time",   value = timeText,            inline = true },
+        { name = "📍 Status",      value = displayStatus,       inline = true },
+        { name = "👥 Total Players", value = tostring(totalPlayers),   inline = true },
+        { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
+        { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
+        { name = "🚔 Police",       value = tostring(police),    inline = true  },
+        { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
+    }
+    local embed = {
+        color = (status == "open" and 3066993) or (status == "opening_soon" and 16753920) or 15158332,
+        fields = fields,
+        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+    }
+    if imageUrl then embed.image = { url = imageUrl } end
+    local embedPayload = { embeds = { embed } }
+    if roleMention then embedPayload.content = roleMention end
+    local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
+    if not ok then return end
+    pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
+end
+
+local function sendBankTruckEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
+    sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds) -- same as generic
+end
+
+local function sendBountyEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
+    -- Placeholder, same as generic for now
+    sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
+end
+
+-- Crown Jewel has its own custom embed (with code and timer)
+local function sendCrownJewelEmbed(webhookUrl, storeName, status, jobId, code, timerSeconds)
+    local now = os.time()
+    local joinLink = getJoinLink(jobId)
+    local teamCounts = getTeamCounts()
+    local criminals = teamCounts.Criminal
+    local police = teamCounts.Police
+    local prisoners = teamCounts.Prisoner
+    local crimAndPris = criminals + prisoners
+    local totalPlayers = crimAndPris + police
+    local isOpen = status == "open"
+    local color = isOpen and 3066993 or 15105570
+    local statusText = isOpen and "Open" or "Under Robbery"
+    local displayName = formatName(storeName)
+    local roleId = getgenv().WebhookConfig.Roles[storeName]
+    local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
+    local imageUrl = getgenv().WebhookConfig.Images[storeName]
+    local fields = {
+        { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
+        { name = "🔢 Code",        value = code,                inline = true  },
+        { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
+        { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
+        { name = "🚔 Police",       value = tostring(police),    inline = true  },
+        { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
+    }
+    if timerSeconds then
+        table.insert(fields, 1, { name = "⏳ Closes in", value = "<t:" .. (now + timerSeconds) .. ":R>", inline = true })
+    end
+    local embed = {
+        color = color,
+        fields = fields,
+        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+    }
+    if imageUrl then embed.image = { url = imageUrl } end
+    local embedPayload = { embeds = { embed } }
+    if roleMention then embedPayload.content = roleMention end
+    local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
+    if not ok then return end
+    pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
+end
+
+-- Plane embed (already exists)
+local function sendPlaneEmbed(webhookUrl, phase, jobId)
+    local now = os.time()
+    local joinLink = getJoinLink(jobId)
+    local teamCounts = getTeamCounts()
+    local criminals = teamCounts.Criminal
+    local police = teamCounts.Police
+    local prisoners = teamCounts.Prisoner
+    local crimAndPris = criminals + prisoners
+    local totalPlayers = crimAndPris + police
+    local roleId = getgenv().WebhookConfig.Roles["Cargo_Plane"]
+    local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
+    local imageUrl = getgenv().WebhookConfig.Images["Cargo_Plane"]
+    local location = (phase == "Just Spawned") and "Near Spawn Point" or "Approaching Airport"
+    local fields = {
+        { name = "📍 Status",      value = phase,               inline = true },
+        { name = "📍 Location",    value = location,            inline = true },
+        { name = "👥 Total Players", value = tostring(totalPlayers), inline = true },
+        { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
+        { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
+        { name = "🚔 Police",       value = tostring(police),    inline = true },
+        { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
+    }
+    local embed = {
+        color = 3447003,
+        fields = fields,
+        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+    }
+    if imageUrl then embed.image = { url = imageUrl } end
+    local embedPayload = { embeds = { embed } }
+    if roleMention then embedPayload.content = roleMention end
+    local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
+    if not ok then return end
+    pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
+end
+
+-- Train embed (modified: no timer, only location)
+local function sendTrainEmbed(webhookUrl, storeName, jobId)
+    local pos = getTrainData(storeName)
+    if not pos then return end
+    local now = os.time()
+    local joinLink = getJoinLink(jobId)
+    local teamCounts = getTeamCounts()
+    local criminals = teamCounts.Criminal
+    local police = teamCounts.Police
+    local prisoners = teamCounts.Prisoner
+    local crimAndPris = criminals + prisoners
+    local totalPlayers = crimAndPris + police
+    local roleId = getgenv().WebhookConfig.Roles[storeName]
+    local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
+    local imageUrl = getgenv().WebhookConfig.Images[storeName]
+    local locationName = getClosestMarkerName(pos)
+    local isCargo = (storeName == "Cargo_Train")
+    local fields = {
+        { name = "📍 Location",    value = locationName,                           inline = true },
+        { name = "👥 Total Players", value = tostring(totalPlayers),                inline = true },
+        { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")",  inline = false },
+        { name = "🏃 Criminals",    value = tostring(crimAndPris),                  inline = true },
+        { name = "🚔 Police",       value = tostring(police),                       inline = true },
+        { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>",                  inline = true },
+    }
+    local embed = {
+        color = isCargo and 15105570 or 3066993,
+        fields = fields,
+        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+    }
+    if imageUrl then embed.image = { url = imageUrl } end
+    local embedPayload = { embeds = { embed } }
+    if roleMention then embedPayload.content = roleMention end
+    local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
+    if not ok then return end
+    pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
+end
+
+-- Oil Rig embed (already exists)
+local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId)
+    local now = os.time()
+    local joinLink = getJoinLink(jobId)
+    local teamCounts = getTeamCounts()
+    local criminals = teamCounts.Criminal
+    local police = teamCounts.Police
+    local prisoners = teamCounts.Prisoner
+    local crimAndPris = criminals + prisoners
+    local totalPlayers = crimAndPris + police
+    local roleId = getgenv().WebhookConfig.Roles["Oil_Rig"]
+    local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
+    local imageUrl = getgenv().WebhookConfig.Images["Oil_Rig"]
+    local fields = {
+        { name = "⏳ Closes in",   value = "<t:" .. (now + timeRemaining) .. ":R>", inline = true },
+        { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
+        { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
+        { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
+        { name = "🚔 Police",       value = tostring(police),    inline = true  },
+        { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
+    }
+    local embed = {
+        color = 16753920,
+        fields = fields,
+        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+    }
+    if imageUrl then embed.image = { url = imageUrl } end
+    local embedPayload = { embeds = { embed } }
+    if roleMention then embedPayload.content = roleMention end
+    local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
+    if not ok then return end
+    pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
+end
+
+-- Airdrop embed (already exists)
 local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId, timerText)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
@@ -423,115 +643,9 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
 end
 
-local function sendPlaneEmbed(webhookUrl, phase, jobId)
-    local now = os.time()
-    local joinLink = getJoinLink(jobId)
-    local teamCounts = getTeamCounts()
-    local criminals = teamCounts.Criminal
-    local police = teamCounts.Police
-    local prisoners = teamCounts.Prisoner
-    local crimAndPris = criminals + prisoners
-    local totalPlayers = crimAndPris + police
-    local roleId = getgenv().WebhookConfig.Roles["Cargo_Plane"]
-    local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
-    local imageUrl = getgenv().WebhookConfig.Images["Cargo_Plane"]
-    local location = (phase == "Just Spawned") and "Near Spawn Point" or "Approaching Airport"
-    local fields = {
-        { name = "📍 Status",      value = phase,               inline = true },
-        { name = "📍 Location",    value = location,            inline = true },
-        { name = "👥 Total Players", value = tostring(totalPlayers), inline = true },
-        { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
-        { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
-        { name = "🚔 Police",       value = tostring(police),    inline = true },
-        { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
-    }
-    local embed = {
-        color = 3447003,
-        fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
-        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-    }
-    if imageUrl then embed.image = { url = imageUrl } end
-    local embedPayload = { embeds = { embed } }
-    if roleMention then embedPayload.content = roleMention end
-    local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
-    if not ok then return end
-    pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
-end
-
-local function sendTrainEmbed(webhookUrl, storeName, jobId)
-    local pos, timeRemaining = getTrainData(storeName)
-    if not pos or not timeRemaining then return end
-    local now = os.time()
-    local joinLink = getJoinLink(jobId)
-    local teamCounts = getTeamCounts()
-    local criminals = teamCounts.Criminal
-    local police = teamCounts.Police
-    local prisoners = teamCounts.Prisoner
-    local crimAndPris = criminals + prisoners
-    local totalPlayers = crimAndPris + police
-    local roleId = getgenv().WebhookConfig.Roles[storeName]
-    local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
-    local imageUrl = getgenv().WebhookConfig.Images[storeName]
-    local displayName = formatName(storeName)
-    local locationName = getClosestMarkerName(pos)
-    local isCargo = (storeName == "train")  -- cargo train uses key "train"
-    local fields = {
-        { name = "⏳ Closes in",   value = "<t:" .. (now + timeRemaining) .. ":R>", inline = true },
-        { name = "📍 Location",    value = locationName,                           inline = true },
-        { name = "👥 Total Players", value = tostring(totalPlayers),                inline = true },
-        { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")",  inline = false },
-        { name = "🏃 Criminals",    value = tostring(crimAndPris),                  inline = true },
-        { name = "🚔 Police",       value = tostring(police),                       inline = true },
-        { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>",                  inline = true },
-    }
-    local embed = {
-        color = isCargo and 15105570 or 3066993,
-        fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
-        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-    }
-    if imageUrl then embed.image = { url = imageUrl } end
-    local embedPayload = { embeds = { embed } }
-    if roleMention then embedPayload.content = roleMention end
-    local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
-    if not ok then return end
-    pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
-end
-
-local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId)
-    local now = os.time()
-    local joinLink = getJoinLink(jobId)
-    local teamCounts = getTeamCounts()
-    local criminals = teamCounts.Criminal
-    local police = teamCounts.Police
-    local prisoners = teamCounts.Prisoner
-    local crimAndPris = criminals + prisoners
-    local totalPlayers = crimAndPris + police
-    local roleId = getgenv().WebhookConfig.Roles["Oil_Rig"]
-    local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
-    local imageUrl = getgenv().WebhookConfig.Images["Oil_Rig"]
-    local fields = {
-        { name = "⏳ Closes in",   value = "<t:" .. (now + timeRemaining) .. ":R>", inline = true },
-        { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
-        { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
-        { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
-        { name = "🚔 Police",       value = tostring(police),    inline = true  },
-        { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
-    }
-    local embed = {
-        color = 16753920,
-        fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
-        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-    }
-    if imageUrl then embed.image = { url = imageUrl } end
-    local embedPayload = { embeds = { embed } }
-    if roleMention then embedPayload.content = roleMention end
-    local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
-    if not ok then return end
-    pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
-end
+-- =============================================
+--           SCAN FUNCTIONS
+-- =============================================
 
 local function getGameTimeText()
     local success, label = pcall(function() return game:GetService("Players").LocalPlayer.PlayerGui.AppUI.Buttons.Minimap.Time.Time end)
@@ -662,6 +776,7 @@ local function scanStores(player, jobId, loggedStores)
                     if isOpen then openCount = openCount + 1
                     elseif isClosed then closedCount = closedCount + 1
                     else robberyCount = robberyCount + 1 end
+
                     if storeName == "Crown_Jewel" then
                         if getgenv().RobberyToggles and not getgenv().RobberyToggles[storeName] then break end
                         if not (isOpen or isRobbery) then break end
@@ -679,88 +794,111 @@ local function scanStores(player, jobId, loggedStores)
                             sendLog(LogLevel.INFO, "Crown Jewel Skipped", "Timer too low: " .. timer .. "s")
                             break
                         end
-                        local now = os.time()
-                        local joinLink = getJoinLink(jobId)
-                        local tc = getTeamCounts()
-                        local crim = tc.Criminal; local pol = tc.Police; local pris = tc.Prisoner
-                        local crimAndPris = crim + pris; local total = crimAndPris + pol
-                        local statusText = isOpen and "Open" or "Under Robbery"
-                        local roleId = getgenv().WebhookConfig.Roles["Crown_Jewel"]
-                        local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
-                        local imageUrl = getgenv().WebhookConfig.Images["Crown_Jewel"]
-                        local fields = {
-                            { name = "👥 Total Players", value = tostring(total),   inline = true  },
-                            { name = "🔢 Code",        value = code,                inline = true  },
-                            { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
-                            { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
-                            { name = "🚔 Police",       value = tostring(pol),      inline = true  },
-                            { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
-                        }
-                        if timer then
-                            table.insert(fields, 1, { name = "⏳ Closes in", value = "<t:" .. (now + timer) .. ":R>", inline = true })
-                        end
-                        local embed = {
-                            color = isOpen and 3066993 or 15105570,
-                            fields = fields,
-                            footer = { text = "Leaf Logger " .. BOT_VERSION },
-                            timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-                        }
-                        if imageUrl then embed.image = { url = imageUrl } end
-                        local embedPayload = { embeds = { embed } }
-                        if roleMention then embedPayload.content = roleMention end
-                        local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
-                        if ok then
-                            pcall(function() request({ Url = webhook, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
-                            sendLog(LogLevel.SUCCESS, "Crown Jewel Logged", display .. " " .. statusText .. " — Code: " .. code, {{name="Code",value=code}})
-                            loggedStores[storeName] = true
-                        end
+                        sendCrownJewelEmbed(webhook, storeName, (isOpen and "open" or "robbery"), jobId, code, timer)
+                        loggedStores[storeName] = true
+                        sendLog(LogLevel.SUCCESS, "Crown Jewel Logged", display .. " " .. (isOpen and "Open" or "Under Robbery") .. " — Code: " .. code, {{name="Code",value=code}})
+
                     elseif storeName == "Mansion" then
                         if getgenv().RobberyToggles and not getgenv().RobberyToggles.Mansion then break end
                         if loggedStores[storeName] then break end
-                        if isRobbery then sendLog(LogLevel.INFO, "Mansion Robbery Skipped", "Mansion is under robbery, not logging.") break end
+                        if isRobbery then
+                            sendLog(LogLevel.INFO, "Mansion Robbery Skipped", "Mansion is under robbery, not logging.")
+                            break
+                        end
                         if not isOpen then break end
                         local status, displayStatus, timeText = getMansionStatus()
                         if not status then sendLog(LogLevel.WARNING, "Mansion Time Missing", "Could not determine mansion status.") break end
                         if status == "closed" then break end
-                        local now = os.time()
-                        local joinLink = getJoinLink(jobId)
-                        local tc = getTeamCounts()
-                        local crim = tc.Criminal; local pol = tc.Police; local pris = tc.Prisoner
-                        local crimAndPris = crim + pris; local total = crimAndPris + pol
-                        local roleId = getgenv().WebhookConfig.Roles["Mansion"]
-                        local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
-                        local imageUrl = getgenv().WebhookConfig.Images["Mansion"]
-                        local embed = {
-                            color = status == "open" and 3066993 or (status == "opening_soon" and 16753920 or 15158332),
-                            fields = {
-                                { name = "⏰ Game Time",   value = timeText,            inline = true },
-                                { name = "📍 Status",      value = displayStatus,       inline = true },
-                                { name = "👥 Total Players", value = tostring(total),   inline = true },
-                                { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
-                                { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
-                                { name = "🚔 Police",       value = tostring(pol),      inline = true  },
-                                { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
-                            },
-                            footer = { text = "Leaf Logger " .. BOT_VERSION },
-                            timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-                        }
-                        if imageUrl then embed.image = { url = imageUrl } end
-                        local embedPayload = { embeds = { embed } }
-                        if roleMention then embedPayload.content = roleMention end
-                        local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
-                        if ok then
-                            pcall(function() request({ Url = webhook, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
-                            sendLog(LogLevel.SUCCESS, "Mansion Logged", "Mansion " .. displayStatus .. " at " .. timeText, {{name="Status",value=displayStatus}})
-                            loggedStores[storeName] = true
+                        sendMansionEmbed(webhook, storeName, status, displayStatus, timeText, jobId)
+                        loggedStores[storeName] = true
+                        sendLog(LogLevel.SUCCESS, "Mansion Logged", "Mansion " .. displayStatus .. " at " .. timeText, {{name="Status",value=displayStatus}})
+
+                    elseif storeName == "Cargo_Train" or storeName == "Passenger_Train" then
+                        if loggedStores[storeName] then break end
+                        if isRobbery then
+                            if webhook and webhook ~= "" then
+                                if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
+                                    sendTrainEmbed(webhook, storeName, jobId)
+                                    loggedStores[storeName] = true
+                                    sendLog(LogLevel.SUCCESS, "Train Logged", display .. " under robbery.", {{name="Store",value=display}})
+                                else
+                                    sendLog(LogLevel.INFO, "Train — Toggled Off", display .. " robbery disabled.")
+                                end
+                            else
+                                sendLog(LogLevel.WARNING, "Train — No Webhook", display .. " robbery but no webhook.")
+                            end
+                        else
+                            -- Trains are only logged when under robbery
+                            sendLog(LogLevel.INFO, "Train Not Robbing", display .. " is not under robbery.")
                         end
+
+                    elseif storeName == "Bank_Truck" then
+                        if loggedStores[storeName] then break end
+                        if isRobbery then
+                            teleportToMarker("Bank")
+                            if webhook and webhook ~= "" then
+                                if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
+                                    sendBankTruckEmbed(webhook, storeName, "robbery", jobId)
+                                    loggedStores[storeName] = true
+                                    sendLog(LogLevel.SUCCESS, "Robbery Logged", display .. " under robbery.", {{name="Store",value=display}})
+                                else
+                                    sendLog(LogLevel.INFO, "Robbery — Toggled Off", display .. " robbery disabled.")
+                                end
+                            else
+                                sendLog(LogLevel.WARNING, "Robbery — No Webhook", display .. " robbery but no webhook.")
+                            end
+                        end
+
+                    elseif storeName == "Oil_Rig" then
+                        -- Oil Rig handled in special robberies, skip here
+                        sendLog(LogLevel.INFO, "Oil Rig Robbery", "Skipping store scan, will be logged by special robberies.")
+
+                    elseif storeName == "Cargo_Plane" then
+                        -- Plane handled in special robberies
+                        sendLog(LogLevel.INFO, "Cargo Plane Robbery Skipped", "Cargo Plane robbery not logged in store scan.")
+
+                    elseif storeName == "Bounty" then
+                        -- WIP
+                        if loggedStores[storeName] then break end
+                        if isRobbery then
+                            if webhook and webhook ~= "" then
+                                if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
+                                    sendBountyEmbed(webhook, storeName, "robbery", jobId)
+                                    loggedStores[storeName] = true
+                                    sendLog(LogLevel.SUCCESS, "Bounty Logged", display .. " under robbery.", {{name="Store",value=display}})
+                                else
+                                    sendLog(LogLevel.INFO, "Bounty — Toggled Off", display .. " robbery disabled.")
+                                end
+                            else
+                                sendLog(LogLevel.WARNING, "Bounty — No Webhook", display .. " robbery but no webhook.")
+                            end
+                        end
+
                     else
+                        -- All other robberies (Jewelry, Power Plant, Museum, etc.)
                         if loggedStores[storeName] then break end
                         if isOpen then
                             if webhook and webhook ~= "" then
                                 if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
-                                    sendDiscordEmbed(webhook, storeName, "open", jobId)
-                                    sendLog(LogLevel.SUCCESS, "Store Open", display .. " open.", {{name="Store",value=display}})
+                                    -- Call appropriate embed function based on storeName
+                                    if storeName == "Jewelry_Store" then
+                                        sendJewelryStoreEmbed(webhook, storeName, "open", jobId)
+                                    elseif storeName == "Power_Plant" then
+                                        sendPowerPlantEmbed(webhook, storeName, "open", jobId)
+                                    elseif storeName == "Museum" then
+                                        sendMuseumEmbed(webhook, storeName, "open", jobId)
+                                    elseif storeName == "Rising_Bank" then
+                                        sendRisingBankEmbed(webhook, storeName, "open", jobId)
+                                    elseif storeName == "Crater_Bank" then
+                                        sendCraterBankEmbed(webhook, storeName, "open", jobId)
+                                    elseif storeName == "Tomb" then
+                                        sendTombEmbed(webhook, storeName, "open", jobId)
+                                    else
+                                        -- Fallback to generic (should not happen)
+                                        sendJewelryStoreEmbed(webhook, storeName, "open", jobId)
+                                    end
                                     loggedStores[storeName] = true
+                                    sendLog(LogLevel.SUCCESS, "Store Open", display .. " open.", {{name="Store",value=display}})
                                 else
                                     sendLog(LogLevel.INFO, "Store Open — Toggled Off", display .. " open but disabled.")
                                 end
@@ -768,42 +906,25 @@ local function scanStores(player, jobId, loggedStores)
                                 sendLog(LogLevel.WARNING, "Store Open — No Webhook", display .. " open but no webhook.")
                             end
                         elseif isRobbery then
-                            if storeName == "Cargo_Plane" then
-                                sendLog(LogLevel.INFO, "Cargo Plane Robbery Skipped", "Cargo Plane robbery not logged.")
-                            elseif storeName == "Oil_Rig" then
-                                sendLog(LogLevel.INFO, "Oil Rig Robbery", "Skipping store scan, will be logged by special robberies.")
-                            elseif storeName == "Bank_Truck" then
-                                teleportToMarker("Bank")
-                                if webhook and webhook ~= "" then
-                                    if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
-                                        sendDiscordEmbed(webhook, storeName, "robbery", jobId)
-                                        sendLog(LogLevel.SUCCESS, "Robbery Logged", display .. " under robbery.", {{name="Store",value=display}})
-                                        loggedStores[storeName] = true
-                                    else
-                                        sendLog(LogLevel.INFO, "Robbery — Toggled Off", display .. " robbery disabled.")
-                                    end
-                                else
-                                    sendLog(LogLevel.WARNING, "Robbery — No Webhook", display .. " robbery but no webhook.")
-                                end
-                            elseif storeName == "train" or storeName == "Passenger_Train" then
-                                -- For trains, use the dedicated train embed
-                                local trainWebhook = getgenv().WebhookConfig.Webhooks[storeName]
-                                if trainWebhook and trainWebhook ~= "" then
-                                    if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
-                                        sendTrainEmbed(trainWebhook, storeName, jobId)
-                                        sendLog(LogLevel.SUCCESS, "Train Logged", display .. " under robbery.", {{name="Store",value=display}})
-                                        loggedStores[storeName] = true
-                                    else
-                                        sendLog(LogLevel.INFO, "Train — Toggled Off", display .. " robbery disabled.")
-                                    end
-                                else
-                                    sendLog(LogLevel.WARNING, "Train — No Webhook", display .. " robbery but no webhook.")
-                                end
-                            elseif webhook and webhook ~= "" then
+                            if webhook and webhook ~= "" then
                                 if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
-                                    sendDiscordEmbed(webhook, storeName, "robbery", jobId)
-                                    sendLog(LogLevel.SUCCESS, "Robbery Logged", display .. " under robbery.", {{name="Store",value=display}})
+                                    if storeName == "Jewelry_Store" then
+                                        sendJewelryStoreEmbed(webhook, storeName, "robbery", jobId)
+                                    elseif storeName == "Power_Plant" then
+                                        sendPowerPlantEmbed(webhook, storeName, "robbery", jobId)
+                                    elseif storeName == "Museum" then
+                                        sendMuseumEmbed(webhook, storeName, "robbery", jobId)
+                                    elseif storeName == "Rising_Bank" then
+                                        sendRisingBankEmbed(webhook, storeName, "robbery", jobId)
+                                    elseif storeName == "Crater_Bank" then
+                                        sendCraterBankEmbed(webhook, storeName, "robbery", jobId)
+                                    elseif storeName == "Tomb" then
+                                        sendTombEmbed(webhook, storeName, "robbery", jobId)
+                                    else
+                                        sendJewelryStoreEmbed(webhook, storeName, "robbery", jobId)
+                                    end
                                     loggedStores[storeName] = true
+                                    sendLog(LogLevel.SUCCESS, "Robbery Logged", display .. " under robbery.", {{name="Store",value=display}})
                                 else
                                     sendLog(LogLevel.INFO, "Robbery — Toggled Off", display .. " robbery disabled.")
                                 end
@@ -812,7 +933,9 @@ local function scanStores(player, jobId, loggedStores)
                             end
                         end
                     end
-                else missedCount = missedCount + 1 end
+                else
+                    missedCount = missedCount + 1
+                end
                 break
             end
         end
@@ -852,6 +975,9 @@ local function checkSpecialRobberies(jobId, loggedSpecials)
     return logged
 end
 
+-- =============================================
+--           SERVER HOP LOGIC (unchanged)
+-- =============================================
 local function getServerIP(placeId, serverId)
     local success, response = pcall(function()
         return request({
@@ -973,6 +1099,10 @@ end
 if not getgenv()._ServerHopSource then
     getgenv()._ServerHopSource = [[loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/main.lua"))()]]
 end
+
+-- =============================================
+--           MAIN EXECUTION
+-- =============================================
 pcall(function()
     local player = waitForLoad()
     local currentJobId = game.JobId
