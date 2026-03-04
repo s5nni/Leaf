@@ -322,7 +322,6 @@ local function sendDiscordEmbed(webhookUrl, storeName, status, jobId, timerSecon
     local color = isOpen and 3066993 or 15105570
     local statusText = isOpen and "Open" or "Under Robbery"
     local displayName = formatName(storeName)
-    local title = displayName .. " is " .. string.lower(statusText) .. "."
     local roleId = getgenv().WebhookConfig.Roles[storeName]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = getgenv().WebhookConfig.Images[storeName]
@@ -603,6 +602,11 @@ local function scanStores(player, jobId, loggedStores)
     local openCount, robberyCount, closedCount, missedCount = 0,0,0,0
     for storeName, iconId in pairs(getgenv().WebhookConfig.Icons) do
         local display = formatName(storeName)
+        -- Skip trains entirely; they are handled by special robberies
+        if storeName == "Cargo_Train" or storeName == "Passenger_Train" then
+            sendLog(LogLevel.INFO, "Train Skipped", "Trains handled by special robberies.")
+            continue
+        end
         local found = false
         for _, img in ipairs(wm:GetDescendants()) do
             if img:IsA("ImageLabel") and img.Image == iconId then
@@ -635,7 +639,6 @@ local function scanStores(player, jobId, loggedStores)
                         local crim = tc.Criminal; local pol = tc.Police; local pris = tc.Prisoner
                         local crimAndPris = crim + pris; local total = crimAndPris + pol
                         local statusText = isOpen and "Open" or "Under Robbery"
-                        local title = display .. " is " .. string.lower(statusText) .. "."
                         local roleId = getgenv().WebhookConfig.Roles["Crown_Jewel"]
                         local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
                         local imageUrl = getgenv().WebhookConfig.Images["Crown_Jewel"]
@@ -724,9 +727,6 @@ local function scanStores(player, jobId, loggedStores)
                             elseif storeName == "Oil_Rig" then
                                 -- Skip Oil Rig; it will be logged by special robberies with timer
                                 sendLog(LogLevel.INFO, "Oil Rig Robbery", "Skipping store scan, will be logged by special robberies.")
-                            elseif storeName == "Cargo_Train" or storeName == "Passenger_Train" then
-                                -- Skip trains; they will be logged by special robberies individually
-                                sendLog(LogLevel.INFO, display .. " Robbery", "Skipping store scan, will be logged by special robberies.")
                             elseif webhook and webhook ~= "" then
                                 if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
                                     sendDiscordEmbed(webhook, storeName, "robbery", jobId)
