@@ -255,7 +255,7 @@ local CARGO_END = Vector3.new(-1659.279, 31.59, 268.128)
 local PASSENGER_START = CARGO_END
 local PASSENGER_END = CARGO_START
 local TRAIN_SPEED = 50
-local function getAllTrainTimes()
+local function getTrainTimes()
     local trains = workspace:FindFirstChild("Trains")
     if not trains then return nil, nil end
     local cargoTime, passengerTime = nil, nil
@@ -425,7 +425,7 @@ local function sendPlaneEmbed(webhookUrl, jobId)
     if not ok then return end
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
 end
-local function sendTrainsEmbed(webhookUrl, cargoTime, passengerTime, jobId)
+local function sendTrainEmbed(webhookUrl, trainType, timeRemaining, jobId)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
     local teamCounts = getTeamCounts()
@@ -434,23 +434,21 @@ local function sendTrainsEmbed(webhookUrl, cargoTime, passengerTime, jobId)
     local prisoners = teamCounts.Prisoner
     local crimAndPris = criminals + prisoners
     local totalPlayers = crimAndPris + police
-    local roleId = getgenv().WebhookConfig.Roles["Train"] or getgenv().WebhookConfig.Roles["Cargo_Train"]
+    local roleKey = (trainType == "cargo") and "Cargo_Train" or "Passenger_Train"
+    local roleId = getgenv().WebhookConfig.Roles[roleKey]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
-    local imageUrl = getgenv().WebhookConfig.Images["Train"] or getgenv().WebhookConfig.Images["Cargo_Train"]
-    local fields = {}
-    if cargoTime then
-        table.insert(fields, { name = "🚂 Cargo Train", value = "Closes <t:" .. (now + cargoTime) .. ":R>", inline = true })
-    end
-    if passengerTime then
-        table.insert(fields, { name = "🚆 Passenger Train", value = "Closes <t:" .. (now + passengerTime) .. ":R>", inline = true })
-    end
-    table.insert(fields, { name = "👥 Total Players", value = tostring(totalPlayers), inline = true })
-    table.insert(fields, { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false })
-    table.insert(fields, { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true })
-    table.insert(fields, { name = "🚔 Police",       value = tostring(police),    inline = true  })
-    table.insert(fields, { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true })
+    local imageUrl = getgenv().WebhookConfig.Images[roleKey]
+    local title = (trainType == "cargo") and "🚂 Cargo Train Robbery!" or "🚆 Passenger Train Robbery!"
+    local fields = {
+        { name = "⏳ Closes in",   value = "<t:" .. (now + timeRemaining) .. ":R>", inline = true },
+        { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
+        { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
+        { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
+        { name = "🚔 Police",       value = tostring(police),    inline = true  },
+        { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
+    }
     local embed = {
-        color = 15105570,
+        color = (trainType == "cargo") and 15105570 or 3066993,
         fields = fields,
         footer = { text = "Leaf Logger " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
@@ -727,7 +725,7 @@ local function scanStores(player, jobId, loggedStores)
                                 -- Skip Oil Rig; it will be logged by special robberies with timer
                                 sendLog(LogLevel.INFO, "Oil Rig Robbery", "Skipping store scan, will be logged by special robberies.")
                             elseif storeName == "Cargo_Train" or storeName == "Passenger_Train" then
-                                -- Skip trains; they will be logged by special robberies with combined embed
+                                -- Skip trains; they will be logged by special robberies individually
                                 sendLog(LogLevel.INFO, display .. " Robbery", "Skipping store scan, will be logged by special robberies.")
                             elseif webhook and webhook ~= "" then
                                 if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
@@ -758,14 +756,22 @@ local function scanStores(player, jobId, loggedStores)
 end
 local function checkSpecialRobberies(jobId, loggedSpecials)
     local logged = loggedSpecials or {}
-    local trainWebhook = getgenv().WebhookConfig.Webhooks["Train"] or getgenv().WebhookConfig.Webhooks["Cargo_Train"]
-    local cargoTime, passengerTime = getAllTrainTimes()
-    local anyTrain = (cargoTime ~= nil) or (passengerTime ~= nil)
-    if anyTrain and not logged.Trains then
-        if trainWebhook and trainWebhook ~= "" then
-            sendTrainsEmbed(trainWebhook, cargoTime, passengerTime, jobId)
-            logged.Trains = true
-            sendLog(LogLevel.SUCCESS, "Trains Logged", "Train activity detected.")
+    -- Trains (individual embeds)
+    local cargoTime, passengerTime = getTrainTimes()
+    if cargoTime and not logged.CargoTrain then
+        local webhook = getgenv().WebhookConfig.Webhooks["Cargo_Train"]
+        if webhook and webhook ~= "" then
+            sendTrainEmbed(webhook, "cargo", cargoTime, jobId)
+            logged.CargoTrain = true
+            sendLog(LogLevel.SUCCESS, "Cargo Train Logged", "Cargo train active.")
+        end
+    end
+    if passengerTime and not logged.PassengerTrain then
+        local webhook = getgenv().WebhookConfig.Webhooks["Passenger_Train"]
+        if webhook and webhook ~= "" then
+            sendTrainEmbed(webhook, "passenger", passengerTime, jobId)
+            logged.PassengerTrain = true
+            sendLog(LogLevel.SUCCESS, "Passenger Train Logged", "Passenger train active.")
         end
     end
     if isPlaneActive() and not logged.Plane then
