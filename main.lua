@@ -50,10 +50,23 @@ local LogLevel = {
     ERROR   = { label = "❌ Error",      color = 15158332 },
     HOP     = { label = "🔀 Server Hop", color = 10181046 },
 }
-local function getJoinLink(jobId)
+local function getJoinLink(jobId, storeName)
     local placeId = game.PlaceId
     local http = game:GetService("HttpService")
-    return "https://s5nni.github.io/Leaf-Joiner/?placeId=" .. placeId .. "&jobId=" .. http:UrlEncode(jobId)
+    
+    -- Get the image URL for this robbery from webhook config
+    local imageUrl = getgenv().WebhookConfig.Images[storeName] or ""
+    
+    -- Build the URL with all three parameters
+    local baseUrl = "https://s5nni.github.io/Leaf-Joiner/"
+    local params = string.format(
+        "?placeId=%s&jobId=%s&imageUrl=%s",
+        tostring(placeId),
+        http:UrlEncode(jobId),
+        http:UrlEncode(imageUrl)
+    )
+    
+    return baseUrl .. params
 end
 local function sendLog(level, title, description, fields)
     local webhook = getgenv().WebhookConfig.Webhooks.Log
@@ -352,7 +365,7 @@ end
 
 local function sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
     local now = os.time()
-    local joinLink = getJoinLink(jobId)
+    local joinLink = getJoinLink(jobId, storeName)
     local teamCounts = getTeamCounts()
     local criminals = teamCounts.Criminal
     local police = teamCounts.Police
@@ -409,7 +422,7 @@ end
 
 local function sendMansionEmbed(webhookUrl, storeName, status, displayStatus, timeText, jobId, timerSeconds)
     local now = os.time()
-    local joinLink = getJoinLink(jobId)
+    local joinLink = getJoinLink(jobId, storeName)
     local teamCounts = getTeamCounts()
     local criminals = teamCounts.Criminal
     local police = teamCounts.Police
@@ -454,7 +467,7 @@ local function sendBountyEmbed(webhookUrl, bountyPlayers, jobId)
     local thumbnailUrl = topPlayer and topPlayer.userId and ("https://www.roblox.com/headshot-thumbnail/image?userId=" .. topPlayer.userId .. "&width=420&height=420&format=png") or nil
 
     local now = os.time()
-    local joinLink = getJoinLink(jobId)
+    local joinLink = getJoinLink(jobId, storeName)
     local teamCounts = getTeamCounts()
     local criminals = teamCounts.Criminal
     local police = teamCounts.Police
@@ -502,7 +515,7 @@ end
 
 local function sendCrownJewelEmbed(webhookUrl, storeName, status, jobId, code, timerSeconds)
     local now = os.time()
-    local joinLink = getJoinLink(jobId)
+    local joinLink = getJoinLink(jobId, storeName)
     local teamCounts = getTeamCounts()
     local criminals = teamCounts.Criminal
     local police = teamCounts.Police
@@ -543,7 +556,7 @@ end
 
 local function sendPlaneEmbed(webhookUrl, phase, jobId)
     local now = os.time()
-    local joinLink = getJoinLink(jobId)
+    local joinLink = getJoinLink(jobId, storeName)
     local teamCounts = getTeamCounts()
     local criminals = teamCounts.Criminal
     local police = teamCounts.Police
@@ -584,7 +597,7 @@ local function sendTrainEmbed(webhookUrl, storeName, jobId)
         return
     end
     local now = os.time()
-    local joinLink = getJoinLink(jobId)
+    local joinLink = getJoinLink(jobId, storeName)
     local teamCounts = getTeamCounts()
     local criminals = teamCounts.Criminal
     local police = teamCounts.Police
@@ -620,7 +633,7 @@ end
 
 local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId)
     local now = os.time()
-    local joinLink = getJoinLink(jobId)
+    local joinLink = getJoinLink(jobId, storeName)
     local teamCounts = getTeamCounts()
     local criminals = teamCounts.Criminal
     local police = teamCounts.Police
@@ -654,7 +667,7 @@ end
 
 local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId, timerText)
     local now = os.time()
-    local joinLink = getJoinLink(jobId)
+    local joinLink = getJoinLink(jobId, storeName)
     local teamCounts = getTeamCounts()
     local criminals = teamCounts.Criminal
     local police = teamCounts.Police
