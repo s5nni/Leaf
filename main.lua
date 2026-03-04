@@ -39,7 +39,6 @@ local AIRDROP_COLORS = {
     { r = 148, g = 96,  b = 69,  label = "🟤 Brown",  embedColor = 10180422 },
     { r = 49,  g = 98,  b = 149, label = "🔵 Blue",   embedColor = 3447003  },
 }
--- Fixed center points for airdrop locations
 local CACTUS_VALLEY_CENTER = Vector3.new(945.572509765625, 32.46596145629883, -217.1789093017578)
 local DUNES_CENTER = Vector3.new(962.0200805664062, 44.48336410522461, -159.24659729003906)
 
@@ -125,11 +124,7 @@ local function getNearestLocation(pos)
     if not pos then return "Unknown Location" end
     local distToCactus = (pos - CACTUS_VALLEY_CENTER).Magnitude
     local distToDunes = (pos - DUNES_CENTER).Magnitude
-    if distToCactus < distToDunes then
-        return "Cactus Valley"
-    else
-        return "Dunes"
-    end
+    if distToCactus < distToDunes then return "Cactus Valley" else return "Dunes" end
 end
 local POSITION_THRESHOLD = 5
 local knownLocations = {
@@ -244,7 +239,6 @@ local CARGO_END = Vector3.new(-1659.279, 31.59, 268.128)
 local PASSENGER_START = CARGO_END
 local PASSENGER_END = CARGO_START
 local TRAIN_SPEED = 50
--- Note: Train times are no longer used; trains are logged normally.
 
 local function getOilRigTimer()
     local oilRig = workspace:FindFirstChild("OilRig")
@@ -266,7 +260,6 @@ local function getOilRigTimer()
     end
     return nil
 end
--- Teleport function for specific markers
 local function teleportToMarker(markerName)
     local player = game:GetService("Players").LocalPlayer
     if not player then return end
@@ -277,22 +270,19 @@ local function teleportToMarker(markerName)
     end
     local hrp = character:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
-
     local markers = workspace:FindFirstChild("RobberyMarkers")
     if not markers then
         sendLog(LogLevel.WARNING, "Teleport", "RobberyMarkers folder not found.")
         return
     end
-
     local marker = markers:FindFirstChild(markerName)
     if marker and marker:IsA("BasePart") then
         hrp.CFrame = marker.CFrame
-        task.wait(0.3) -- small delay to allow rendering
+        task.wait(0.3)
     else
         sendLog(LogLevel.WARNING, "Teleport", "Marker " .. markerName .. " not found.")
     end
 end
--- Full teleport to all three markers (used before first scan)
 local function teleportToAllMarkers()
     teleportToMarker("Bank")
     teleportToMarker("Casino")
@@ -353,7 +343,6 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
     local roleId = roleKey and getgenv().WebhookConfig.Roles[roleKey]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = roleKey and getgenv().WebhookConfig.Images[roleKey]
-    -- Reordered fields: timer first, then type, location, players, etc. Using 🏃 for criminals.
     local fields = {
         { name = "⏳ Time Left",   value = timerText or "N/A",   inline = true },
         { name = "🎨 Drop Type",   value = colorDef.label,       inline = true },
@@ -486,11 +475,8 @@ local function checkAirdrops(jobId, loggedDrops)
         return loggedDrops
     end
     if getgenv().RobberyToggles and not getgenv().RobberyToggles.Airdrop then return loggedDrops end
-
-    -- Teleport to Casino and Tomb to render surroundings for airdrops
     teleportToMarker("Casino")
     teleportToMarker("Tomb")
-
     local found, logged = 0, 0
     local candidates = {}
     for _, drop in ipairs(workspace:GetChildren()) do
@@ -563,7 +549,6 @@ local function scanStores(player, jobId, loggedStores)
     local openCount, robberyCount, closedCount, missedCount = 0,0,0,0
     for storeName, iconId in pairs(getgenv().WebhookConfig.Icons) do
         local display = formatName(storeName)
-        -- Note: Trains are now logged normally (no skip)
         local found = false
         for _, img in ipairs(wm:GetDescendants()) do
             if img:IsA("ImageLabel") and img.Image == iconId then
@@ -583,11 +568,15 @@ local function scanStores(player, jobId, loggedStores)
                         if getgenv().RobberyToggles and not getgenv().RobberyToggles[storeName] then break end
                         if not (isOpen or isRobbery) then break end
                         if loggedStores[storeName] then break end
-                        -- Teleport to Casino to render code
                         teleportToMarker("Casino")
-                        local code = getCrownJewelCode() or "N/A"
+                        local code = nil
+                        for attempt = 1, 5 do
+                            code = getCrownJewelCode()
+                            if code and code ~= "" then break end
+                            task.wait(0.5)
+                        end
+                        if not code or code == "" then code = "Fail" end
                         local timer = getCrownJewelTimer()
-                        -- Skip if timer <= 60 seconds (1 minute)
                         if timer and timer <= 60 then
                             sendLog(LogLevel.INFO, "Crown Jewel Skipped", "Timer too low: " .. timer .. "s")
                             break
@@ -684,10 +673,8 @@ local function scanStores(player, jobId, loggedStores)
                             if storeName == "Cargo_Plane" then
                                 sendLog(LogLevel.INFO, "Cargo Plane Robbery Skipped", "Cargo Plane robbery not logged.")
                             elseif storeName == "Oil_Rig" then
-                                -- Skip Oil Rig; it will be logged by special robberies with timer
                                 sendLog(LogLevel.INFO, "Oil Rig Robbery", "Skipping store scan, will be logged by special robberies.")
                             elseif storeName == "Bank_Truck" then
-                                -- Teleport to Bank to verify robbery
                                 teleportToMarker("Bank")
                                 if webhook and webhook ~= "" then
                                     if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
@@ -729,7 +716,6 @@ local function scanStores(player, jobId, loggedStores)
 end
 local function checkSpecialRobberies(jobId, loggedSpecials)
     local logged = loggedSpecials or {}
-    -- Trains are now handled in regular store scan, so nothing here.
     if isPlaneActive() and not logged.Plane then
         local webhook = getgenv().WebhookConfig.Webhooks["Cargo_Plane"]
         if webhook and webhook ~= "" then
@@ -739,7 +725,6 @@ local function checkSpecialRobberies(jobId, loggedSpecials)
         end
     end
     local oilTime = getOilRigTimer()
-    -- Skip if oilTime <= 60 seconds
     if oilTime and oilTime > 60 and not logged.OilRig then
         local webhook = getgenv().WebhookConfig.Webhooks["Oil_Rig"]
         if webhook and webhook ~= "" then
@@ -900,10 +885,7 @@ pcall(function()
         return
     end
     getgenv().ServerId = currentJobId
-
-    -- Teleport to all three markers before first scan
     teleportToAllMarkers()
-
     sendLog(LogLevel.INFO, "First Pass Started", "Scanning for open stores...")
     local loggedStores = {}
     local loggedDrops = {}
@@ -914,7 +896,6 @@ pcall(function()
     sendLog(LogLevel.INFO, "Waiting Period", "Waiting 15 seconds for robberies to start...")
     task.wait(15)
     sendLog(LogLevel.INFO, "Second Pass Started", "Scanning for robberies that started during wait...")
-    -- No teleport before second pass (as requested)
     loggedStores = scanStores(player, currentJobId, loggedStores)
     loggedDrops = checkAirdrops(currentJobId, loggedDrops)
     loggedSpecials = checkSpecialRobberies(currentJobId, loggedSpecials)
