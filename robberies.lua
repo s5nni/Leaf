@@ -13,5 +13,6 @@ getgenv().RobberyToggles = {
     Airdrop = true,
     Passenger_Train = true,
     Bank_Truck = true,
+    Bounty = true,
     MinBounty = 2000,
 }
