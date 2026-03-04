@@ -1,4 +1,4 @@
-loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/webhook.lua"))()
+lloadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/webhook.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/whitelist.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/robberies.lua"))()
 local BOT_VERSION = loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/version.lua"))()
@@ -292,7 +292,7 @@ local function teleportToAllMarkers()
     teleportToMarker("Tomb")
 end
 
--- Helper to get train data for a specific train type
+-- Helper to get train data for a specific train type (storeName is the webhook key: "train" for cargo, "Passenger_Train" for passenger)
 local function getTrainData(storeName)
     local trains = workspace:FindFirstChild("Trains")
     if not trains then return nil, nil end
@@ -308,7 +308,8 @@ local function getTrainData(storeName)
                     local b = math.round(color.B * 255)
                     local pos = body.Position
                     local isCargo = (r == 255 and g == 144 and b == 78)
-                    if (storeName == "Cargo_Train" and isCargo) or (storeName == "Passenger_Train" and not isCargo) then
+                    -- Match based on storeName: "train" for cargo, "Passenger_Train" for passenger
+                    if (storeName == "train" and isCargo) or (storeName == "Passenger_Train" and not isCargo) then
                         local startPos = isCargo and CARGO_START or PASSENGER_START
                         local endPos = isCargo and CARGO_END or PASSENGER_END
                         local totalPath = (startPos - endPos).Magnitude * 1.2
@@ -324,7 +325,7 @@ local function getTrainData(storeName)
     return nil, nil
 end
 
--- Helper to find closest RobberyMarker to a position
+-- Helper to find closest RobberyMarker to a position (any child)
 local function getClosestMarkerName(pos)
     local markers = workspace:FindFirstChild("RobberyMarkers")
     if not markers then return "Unknown" end
@@ -469,13 +470,12 @@ local function sendTrainEmbed(webhookUrl, storeName, jobId)
     local prisoners = teamCounts.Prisoner
     local crimAndPris = criminals + prisoners
     local totalPlayers = crimAndPris + police
-    -- Determine webhook key: for cargo train use "train", for passenger use "Passenger_Train"
-    local webhookKey = (storeName == "Cargo_Train") and "train" or "Passenger_Train"
-    local roleId = getgenv().WebhookConfig.Roles[webhookKey]
+    local roleId = getgenv().WebhookConfig.Roles[storeName]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
-    local imageUrl = getgenv().WebhookConfig.Images[webhookKey]
+    local imageUrl = getgenv().WebhookConfig.Images[storeName]
     local displayName = formatName(storeName)
     local locationName = getClosestMarkerName(pos)
+    local isCargo = (storeName == "train")  -- cargo train uses key "train"
     local fields = {
         { name = "⏳ Closes in",   value = "<t:" .. (now + timeRemaining) .. ":R>", inline = true },
         { name = "📍 Location",    value = locationName,                           inline = true },
@@ -486,7 +486,7 @@ local function sendTrainEmbed(webhookUrl, storeName, jobId)
         { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>",                  inline = true },
     }
     local embed = {
-        color = (storeName == "Cargo_Train") and 15105570 or 3066993,
+        color = isCargo and 15105570 or 3066993,
         fields = fields,
         footer = { text = "Leaf Logger " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
@@ -785,10 +785,9 @@ local function scanStores(player, jobId, loggedStores)
                                 else
                                     sendLog(LogLevel.WARNING, "Robbery — No Webhook", display .. " robbery but no webhook.")
                                 end
-                            elseif storeName == "Cargo_Train" or storeName == "Passenger_Train" then
+                            elseif storeName == "train" or storeName == "Passenger_Train" then
                                 -- For trains, use the dedicated train embed
-                                local webhookKey = (storeName == "Cargo_Train") and "train" or "Passenger_Train"
-                                local trainWebhook = getgenv().WebhookConfig.Webhooks[webhookKey]
+                                local trainWebhook = getgenv().WebhookConfig.Webhooks[storeName]
                                 if trainWebhook and trainWebhook ~= "" then
                                     if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
                                         sendTrainEmbed(trainWebhook, storeName, jobId)
