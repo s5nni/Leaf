@@ -668,18 +668,27 @@ end
 -- =============================================
 
 local function checkBounties(jobId, loggedSpecials)
-    if loggedSpecials.Bounty then return loggedSpecials end
-    if getgenv().RobberyToggles and not getgenv().RobberyToggles.Bounty then return loggedSpecials end
+    if loggedSpecials.Bounty then 
+        print("DEBUG Bounty: Already logged this server, skipping.")
+        return loggedSpecials 
+    end
+    if getgenv().RobberyToggles and not getgenv().RobberyToggles.Bounty then 
+        print("DEBUG Bounty: Bounty toggled off.")
+        return loggedSpecials 
+    end
 
     local webhook = getgenv().WebhookConfig.Webhooks["Bounty"]
     if not webhook or webhook == "" then
         sendLog(LogLevel.WARNING, "Bounty Webhook Missing", "No webhook configured for Bounty.")
+        print("DEBUG Bounty: Webhook missing.")
         return loggedSpecials
     end
+    print("DEBUG Bounty: Webhook found.")
 
     local minBounty = 5000
     if getgenv().RobberyToggles and getgenv().RobberyToggles.MinBounty then
         minBounty = getgenv().RobberyToggles.MinBounty
+        print("DEBUG Bounty: MinBounty set to " .. minBounty)
     end
 
     -- Find closest BountyBoard
@@ -687,8 +696,10 @@ local function checkBounties(jobId, loggedSpecials)
     local hrp = localPlayer and localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not hrp then
         sendLog(LogLevel.WARNING, "Bounty Scan", "Could not get HumanoidRootPart to determine closest board. Skipping.")
+        print("DEBUG Bounty: No HRP.")
         return loggedSpecials
     end
+    print("DEBUG Bounty: HRP found.")
 
     local closestBoard = nil
     local closestDist = math.huge
@@ -707,6 +718,7 @@ local function checkBounties(jobId, loggedSpecials)
             end
             if pos then
                 local dist = (pos - hrp.Position).Magnitude
+                print(string.format("DEBUG Bounty: Found BountyBoard at dist %.2f", dist))
                 if dist < closestDist then
                     closestDist = dist
                     closestBoard = obj
@@ -717,16 +729,21 @@ local function checkBounties(jobId, loggedSpecials)
 
     if not closestBoard then
         sendLog(LogLevel.INFO, "Bounty Scan", "No BountyBoard found.")
+        print("DEBUG Bounty: No BountyBoard found.")
         return loggedSpecials
     end
+    print("DEBUG Bounty: Closest board selected.")
 
     local bountyPlayers = {}
     local boardModel = closestBoard:FindFirstChild("Board")
     if boardModel then
+        print("DEBUG Bounty: Found Board")
         local mostWanted = boardModel:FindFirstChild("MostWanted")
         if mostWanted then
+            print("DEBUG Bounty: Found MostWanted")
             local board2 = mostWanted:FindFirstChild("Board")
             if board2 then
+                print("DEBUG Bounty: Found inner Board, children count: " .. #board2:GetChildren())
                 for _, playerFrame in ipairs(board2:GetChildren()) do
                     if playerFrame.Name == "PlayerFrame" then
                         local nameText = playerFrame:FindFirstChild("NameText")
@@ -735,6 +752,7 @@ local function checkBounties(jobId, loggedSpecials)
                             local displayName = nameText.Text:gsub("^%s+", ""):gsub("%s+$", "")
                             local bountyStr = bountyText.Text:gsub("[$,]", "")
                             local bounty = tonumber(bountyStr)
+                            print(string.format("DEBUG Bounty: PlayerFrame: displayName='%s', raw='%s', parsed=%s", displayName, bountyText.Text, tostring(bounty)))
                             if bounty and bounty >= minBounty then
                                 local targetPlayer = nil
                                 for _, plr in ipairs(game:GetService("Players"):GetPlayers()) do
@@ -744,6 +762,7 @@ local function checkBounties(jobId, loggedSpecials)
                                     end
                                 end
                                 if targetPlayer then
+                                    print(string.format("DEBUG Bounty: Matched player %s (userId=%d)", targetPlayer.Name, targetPlayer.UserId))
                                     table.insert(bountyPlayers, {
                                         username = targetPlayer.Name,
                                         userId = targetPlayer.UserId,
@@ -751,6 +770,7 @@ local function checkBounties(jobId, loggedSpecials)
                                         displayName = displayName
                                     })
                                 else
+                                    print("DEBUG Bounty: No player found with display name " .. displayName)
                                     table.insert(bountyPlayers, {
                                         username = displayName,
                                         userId = nil,
@@ -758,19 +778,31 @@ local function checkBounties(jobId, loggedSpecials)
                                         displayName = displayName
                                     })
                                 end
+                            else
+                                print("DEBUG Bounty: Bounty below min or invalid.")
                             end
+                        else
+                            print("DEBUG Bounty: PlayerFrame missing NameText or BountyText")
                         end
                     end
                 end
+            else
+                print("DEBUG Bounty: inner Board not found")
             end
+        else
+            print("DEBUG Bounty: MostWanted not found")
         end
+    else
+        print("DEBUG Bounty: Board not found under BountyBoard")
     end
 
     if #bountyPlayers > 0 then
+        print("DEBUG Bounty: Sending embed with " .. #bountyPlayers .. " players.")
         sendBountyEmbed(webhook, bountyPlayers, jobId)
         loggedSpecials.Bounty = true
         sendLog(LogLevel.SUCCESS, "Bounty Logged", "Found " .. #bountyPlayers .. " player(s) with bounty ≥ $" .. minBounty .. ".")
     else
+        print("DEBUG Bounty: No players with bounty ≥ $" .. minBounty .. " found.")
         sendLog(LogLevel.INFO, "Bounty Scan", "No players with bounty ≥ $" .. minBounty .. " found.")
     end
 
