@@ -244,40 +244,8 @@ local CARGO_END = Vector3.new(-1659.279, 31.59, 268.128)
 local PASSENGER_START = CARGO_END
 local PASSENGER_END = CARGO_START
 local TRAIN_SPEED = 50
-local function getTrainTimes()
-    local trains = workspace:FindFirstChild("Trains")
-    if not trains then return nil, nil end
-    local cargoTime, passengerTime = nil, nil
-    for _, loco in ipairs(trains:GetChildren()) do
-        if loco.Name:find("LocomotiveFront") then
-            local model = loco:FindFirstChild("Model")
-            if model then
-                local body = model:FindFirstChild("Body")
-                if body and body:IsA("BasePart") then
-                    local color = body.Color
-                    local r = math.round(color.R * 255)
-                    local g = math.round(color.G * 255)
-                    local b = math.round(color.B * 255)
-                    local pos = body.Position
-                    -- Cargo color: (255,144,78)
-                    if r == 255 and g == 144 and b == 78 then
-                        local totalPath = (CARGO_START - CARGO_END).Magnitude * 1.2
-                        local traveled = (pos - CARGO_START).Magnitude
-                        local remaining = math.max(totalPath - traveled, 0)
-                        cargoTime = remaining / TRAIN_SPEED
-                    else
-                        -- Passenger (any other color)
-                        local totalPath = (PASSENGER_START - PASSENGER_END).Magnitude * 1.2
-                        local traveled = (pos - PASSENGER_START).Magnitude
-                        local remaining = math.max(totalPath - traveled, 0)
-                        passengerTime = remaining / TRAIN_SPEED
-                    end
-                end
-            end
-        end
-    end
-    return cargoTime, passengerTime
-end
+-- Note: Train times are no longer used; trains are logged normally.
+
 local function getOilRigTimer()
     local oilRig = workspace:FindFirstChild("OilRig")
     if not oilRig then return nil end
@@ -298,8 +266,8 @@ local function getOilRigTimer()
     end
     return nil
 end
--- New teleport function for guaranteed markers
-local function teleportToMarkers()
+-- Teleport function for specific markers
+local function teleportToMarker(markerName)
     local player = game:GetService("Players").LocalPlayer
     if not player then return end
     local character = player.Character
@@ -316,16 +284,19 @@ local function teleportToMarkers()
         return
     end
 
-    local locations = {"Bank", "Casino", "Tomb"}
-    for _, name in ipairs(locations) do
-        local marker = markers:FindFirstChild(name)
-        if marker and marker:IsA("BasePart") then
-            hrp.CFrame = marker.CFrame
-            task.wait(0.5) -- small delay to allow rendering
-        else
-            sendLog(LogLevel.WARNING, "Teleport", "Marker " .. name .. " not found.")
-        end
+    local marker = markers:FindFirstChild(markerName)
+    if marker and marker:IsA("BasePart") then
+        hrp.CFrame = marker.CFrame
+        task.wait(0.3) -- small delay to allow rendering
+    else
+        sendLog(LogLevel.WARNING, "Teleport", "Marker " .. markerName .. " not found.")
     end
+end
+-- Full teleport to all three markers (used before first scan)
+local function teleportToAllMarkers()
+    teleportToMarker("Bank")
+    teleportToMarker("Casino")
+    teleportToMarker("Tomb")
 end
 local function sendDiscordEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
     local now = os.time()
@@ -382,14 +353,14 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
     local roleId = roleKey and getgenv().WebhookConfig.Roles[roleKey]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = roleKey and getgenv().WebhookConfig.Images[roleKey]
-    -- Reordered fields: timer first, then type, location, players, etc.
+    -- Reordered fields: timer first, then type, location, players, etc. Using 🏃 for criminals.
     local fields = {
         { name = "⏳ Time Left",   value = timerText or "N/A",   inline = true },
         { name = "🎨 Drop Type",   value = colorDef.label,       inline = true },
         { name = "📍 Location",    value = locationName,         inline = true },
         { name = "👥 Total Players", value = tostring(totalPlayers), inline = true },
         { name = "🔗 Join Server", value = "[Click to Join](" .. joinLink .. ")", inline = false },
-        { name = "🦹 Criminals",   value = tostring(crimAndPris), inline = false },
+        { name = "🏃 Criminals",   value = tostring(crimAndPris), inline = false },
         { name = "🚔 Police",      value = tostring(police),     inline = true },
         { name = "⏱️ Logged",      value = "<t:" .. now .. ":R>", inline = true },
     }
@@ -433,41 +404,6 @@ local function sendPlaneEmbed(webhookUrl, jobId)
     end
     local embed = {
         color = 3447003,
-        fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
-        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-    }
-    if imageUrl then embed.image = { url = imageUrl } end
-    local embedPayload = { embeds = { embed } }
-    if roleMention then embedPayload.content = roleMention end
-    local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
-    if not ok then return end
-    pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
-end
-local function sendTrainEmbed(webhookUrl, trainType, timeRemaining, jobId)
-    local now = os.time()
-    local joinLink = getJoinLink(jobId)
-    local teamCounts = getTeamCounts()
-    local criminals = teamCounts.Criminal
-    local police = teamCounts.Police
-    local prisoners = teamCounts.Prisoner
-    local crimAndPris = criminals + prisoners
-    local totalPlayers = crimAndPris + police
-    local roleKey = (trainType == "cargo") and "Cargo_Train" or "Passenger_Train"
-    local roleId = getgenv().WebhookConfig.Roles[roleKey]
-    local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
-    local imageUrl = getgenv().WebhookConfig.Images[roleKey]
-    local title = (trainType == "cargo") and "🚂 Cargo Train Robbery!" or "🚆 Passenger Train Robbery!"
-    local fields = {
-        { name = "⏳ Closes in",   value = "<t:" .. (now + timeRemaining) .. ":R>", inline = true },
-        { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
-        { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
-        { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
-        { name = "🚔 Police",       value = tostring(police),    inline = true  },
-        { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
-    }
-    local embed = {
-        color = (trainType == "cargo") and 15105570 or 3066993,
         fields = fields,
         footer = { text = "Leaf Logger " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
@@ -550,6 +486,11 @@ local function checkAirdrops(jobId, loggedDrops)
         return loggedDrops
     end
     if getgenv().RobberyToggles and not getgenv().RobberyToggles.Airdrop then return loggedDrops end
+
+    -- Teleport to Casino and Tomb to render surroundings for airdrops
+    teleportToMarker("Casino")
+    teleportToMarker("Tomb")
+
     local found, logged = 0, 0
     local candidates = {}
     for _, drop in ipairs(workspace:GetChildren()) do
@@ -622,11 +563,7 @@ local function scanStores(player, jobId, loggedStores)
     local openCount, robberyCount, closedCount, missedCount = 0,0,0,0
     for storeName, iconId in pairs(getgenv().WebhookConfig.Icons) do
         local display = formatName(storeName)
-        -- Skip trains entirely; they are handled by special robberies
-        if storeName == "Cargo_Train" or storeName == "Passenger_Train" then
-            sendLog(LogLevel.INFO, "Train Skipped", "Trains handled by special robberies.")
-            continue
-        end
+        -- Note: Trains are now logged normally (no skip)
         local found = false
         for _, img in ipairs(wm:GetDescendants()) do
             if img:IsA("ImageLabel") and img.Image == iconId then
@@ -646,6 +583,8 @@ local function scanStores(player, jobId, loggedStores)
                         if getgenv().RobberyToggles and not getgenv().RobberyToggles[storeName] then break end
                         if not (isOpen or isRobbery) then break end
                         if loggedStores[storeName] then break end
+                        -- Teleport to Casino to render code
+                        teleportToMarker("Casino")
                         local code = getCrownJewelCode() or "N/A"
                         local timer = getCrownJewelTimer()
                         -- Skip if timer <= 60 seconds (1 minute)
@@ -747,6 +686,20 @@ local function scanStores(player, jobId, loggedStores)
                             elseif storeName == "Oil_Rig" then
                                 -- Skip Oil Rig; it will be logged by special robberies with timer
                                 sendLog(LogLevel.INFO, "Oil Rig Robbery", "Skipping store scan, will be logged by special robberies.")
+                            elseif storeName == "Bank_Truck" then
+                                -- Teleport to Bank to verify robbery
+                                teleportToMarker("Bank")
+                                if webhook and webhook ~= "" then
+                                    if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
+                                        sendDiscordEmbed(webhook, storeName, "robbery", jobId)
+                                        sendLog(LogLevel.SUCCESS, "Robbery Logged", display .. " under robbery.", {{name="Store",value=display}})
+                                        loggedStores[storeName] = true
+                                    else
+                                        sendLog(LogLevel.INFO, "Robbery — Toggled Off", display .. " robbery disabled.")
+                                    end
+                                else
+                                    sendLog(LogLevel.WARNING, "Robbery — No Webhook", display .. " robbery but no webhook.")
+                                end
                             elseif webhook and webhook ~= "" then
                                 if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
                                     sendDiscordEmbed(webhook, storeName, "robbery", jobId)
@@ -776,24 +729,7 @@ local function scanStores(player, jobId, loggedStores)
 end
 local function checkSpecialRobberies(jobId, loggedSpecials)
     local logged = loggedSpecials or {}
-    -- Trains (individual embeds)
-    local cargoTime, passengerTime = getTrainTimes()
-    if cargoTime and not logged.CargoTrain then
-        local webhook = getgenv().WebhookConfig.Webhooks["Cargo_Train"]
-        if webhook and webhook ~= "" then
-            sendTrainEmbed(webhook, "cargo", cargoTime, jobId)
-            logged.CargoTrain = true
-            sendLog(LogLevel.SUCCESS, "Cargo Train Logged", "Cargo train active.")
-        end
-    end
-    if passengerTime and not logged.PassengerTrain then
-        local webhook = getgenv().WebhookConfig.Webhooks["Passenger_Train"]
-        if webhook and webhook ~= "" then
-            sendTrainEmbed(webhook, "passenger", passengerTime, jobId)
-            logged.PassengerTrain = true
-            sendLog(LogLevel.SUCCESS, "Passenger Train Logged", "Passenger train active.")
-        end
-    end
+    -- Trains are now handled in regular store scan, so nothing here.
     if isPlaneActive() and not logged.Plane then
         local webhook = getgenv().WebhookConfig.Webhooks["Cargo_Plane"]
         if webhook and webhook ~= "" then
@@ -966,7 +902,7 @@ pcall(function()
     getgenv().ServerId = currentJobId
 
     -- Teleport to all three markers before first scan
-    teleportToMarkers()
+    teleportToAllMarkers()
 
     sendLog(LogLevel.INFO, "First Pass Started", "Scanning for open stores...")
     local loggedStores = {}
