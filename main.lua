@@ -1299,7 +1299,9 @@ local function hopToNewServer(player)
     end
 end
 if not getgenv()._ServerHopSource then
-    getgenv()._ServerHopSource = [[loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/main.lua"))()]]
+    getgenv()._ServerHopSource = [[
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/main.lua"))()
+    ]]
 end
 
 -- =============================================
