@@ -3,10 +3,19 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/robberies.lua"))()
 local BOT_VERSION = loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/version.lua"))()
 local PLANE_WAYPOINTS = loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/PlaneWaypoints.lua"))()
-local SPAWN_WP_INDEX      = 21
-local TURN_START_INDEX    = 370
-local TURN_END_INDEX      = 395
-local AIRPORT_WP_INDEX    = 327
+
+-- =============================================
+--           PLANE WAYPOINT INDICES (SET THESE!)
+-- =============================================
+-- Use the comments in the waypoints table (original names) to find the correct index.
+local SPAWN_WP_INDEX      = 21   -- WP48 became WP21 in the sorted list
+local TURN_START_INDEX    = 370  -- Find which index corresponds to original WP370
+local TURN_END_INDEX      = 395  -- original WP395
+local AIRPORT_WP_INDEX    = 327  -- original WP327 (airport / landed)
+
+-- =============================================
+--           FILE SYSTEM & GLOBALS
+-- =============================================
 local function getVisitedFilePath()
     local folder = "LeafBot_" .. game.PlaceId
     if not isfolder(folder) then makefolder(folder) end
@@ -38,6 +47,10 @@ end
 getgenv().VisitedServers = cleanupOldServers()
 if not getgenv().ServerRegionCache then getgenv().ServerRegionCache = {} end
 if getgenv().WhitelistCheck and not getgenv().WhitelistCheck() then warn("Not whitelisted.") return end
+
+-- =============================================
+--           CONSTANTS & HELPERS
+-- =============================================
 local AIRDROP_LOCATION_RADIUS = math.huge
 local AIRDROP_COLORS = {
     { r = 147, g = 44,  b = 53,  label = "🔴 Red",   embedColor = 15158332 },
@@ -198,6 +211,32 @@ local function getCrownJewelTimer()
     end
     return nil
 end
+
+-- =============================================
+--           AREA LOADING (RequestStreamAroundAsync)
+-- =============================================
+local function loadArea(markerName)
+    local player = game:GetService("Players").LocalPlayer
+    if not player then return end
+    local markers = workspace:FindFirstChild("RobberyMarkers")
+    if not markers then
+        sendLog(LogLevel.WARNING, "Area Load", "RobberyMarkers folder not found.")
+        return
+    end
+    local marker = markers:FindFirstChild(markerName)
+    if marker and marker:IsA("BasePart") then
+        local pos = marker.Position
+        player:RequestStreamAroundAsync(pos)
+        sendLog(LogLevel.INFO, "Area Load", "Requested streaming around " .. markerName)
+        task.wait(0.5) -- give streaming a moment to start
+    else
+        sendLog(LogLevel.WARNING, "Area Load", "Marker " .. markerName .. " not found or not a BasePart.")
+    end
+end
+
+-- =============================================
+--           PLANE DETECTION (WAYPOINT BASED)
+-- =============================================
 local function getPlanePart()
     local plane = workspace:FindFirstChild("Plane")
     if not plane then return nil end
@@ -328,6 +367,10 @@ local function sendPlaneEmbed(webhookUrl, status, jobId)
     if not ok then return end
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
 end
+
+-- =============================================
+--           TRAIN DETECTION
+-- =============================================
 local function getClosestMarkerWithDistance(pos)
     local markers = workspace:FindFirstChild("RobberyMarkers")
     if not markers then return "Unknown", math.huge end
@@ -405,6 +448,10 @@ local function sendTrainEmbed(webhookUrl, storeName, locationName, jobId)
     if not ok then return end
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
 end
+
+-- =============================================
+--           OIL RIG / BOUNTY
+-- =============================================
 local function getOilRigTimer()
     local oilRig = workspace:FindFirstChild("OilRig")
     if not oilRig then return nil end
@@ -424,35 +471,6 @@ local function getOilRigTimer()
         end
     end
     return nil
-end
-
-local function teleportToMarker(markerName)
-    local player = game:GetService("Players").LocalPlayer
-    if not player then return end
-    local character = player.Character
-    if not character then
-        player.CharacterAdded:Wait()
-        character = player.Character
-    end
-    local hrp = character:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    local markers = workspace:FindFirstChild("RobberyMarkers")
-    if not markers then
-        sendLog(LogLevel.WARNING, "Teleport", "RobberyMarkers folder not found.")
-        return
-    end
-    local marker = markers:FindFirstChild(markerName)
-    if marker and marker:IsA("BasePart") then
-        hrp.CFrame = marker.CFrame
-        task.wait(0.3)
-    else
-        sendLog(LogLevel.WARNING, "Teleport", "Marker " .. markerName .. " not found.")
-    end
-end
-local function teleportToAllMarkers()
-    teleportToMarker("Bank")
-    teleportToMarker("Casino")
-    teleportToMarker("Tomb")
 end
 
 -- =============================================
@@ -828,41 +846,8 @@ local function checkBounties(jobId, loggedSpecials)
 end
 
 -- =============================================
---           SCAN FUNCTIONS
+--           AIRDROP SCAN (with sequential area loading)
 -- =============================================
-
-local function getGameTimeText()
-    local success, label = pcall(function() return game:GetService("Players").LocalPlayer.PlayerGui.AppUI.Buttons.Minimap.Time.Time end)
-    if success and label and label:IsA("TextLabel") then return label.Text end
-    return nil
-end
-local function parseGameTime(timeStr)
-    local hour, minute, period = timeStr:match("(%d+):(%d+)%s*(%a+)")
-    if not hour then return nil end
-    hour = tonumber(hour); minute = tonumber(minute); period = period:upper()
-    if period == "PM" and hour ~= 12 then hour = hour + 12
-    elseif period == "AM" and hour == 12 then hour = 0 end
-    return hour, minute, period
-end
-local function getMansionStatus()
-    local timeText = getGameTimeText()
-    if not timeText then return nil, nil, nil end
-    local hour, minute, period = parseGameTime(timeText)
-    if not hour then return nil, nil, nil end
-    local totalMinutes = hour * 60 + (minute or 0)
-    local status, displayStatus
-    if totalMinutes >= 1080 or totalMinutes < 15 then
-        status = "open"; displayStatus = "Open"
-    elseif totalMinutes >= 960 and totalMinutes < 1080 then
-        status = "opening_soon"; displayStatus = "Opening Soon"
-    elseif totalMinutes >= 15 and totalMinutes < 120 then
-        status = "closing_soon"; displayStatus = "Closing Soon"
-    else
-        status = "closed"; displayStatus = "Closed"
-    end
-    return status, displayStatus, timeText
-end
-
 local function checkAirdrops(jobId, loggedDrops)
     local webhook = getgenv().WebhookConfig.Webhooks.Airdrop
     if not webhook or webhook == "" then
@@ -870,73 +855,97 @@ local function checkAirdrops(jobId, loggedDrops)
         return loggedDrops
     end
     if getgenv().RobberyToggles and not getgenv().RobberyToggles.Airdrop then return loggedDrops end
-    teleportToMarker("Casino")
-    teleportToMarker("Tomb")
-    local found, logged = 0, 0
-    local candidates = {}
-    for _, drop in ipairs(workspace:GetChildren()) do
-        if drop.Name == "Drop" and drop:IsA("Model") then table.insert(candidates, drop) end
-    end
-    if #candidates == 0 then
-        sendLog(LogLevel.WARNING, "Airdrop Scan", "No 'Drop' models.")
-        return loggedDrops
-    end
-    for _, drop in ipairs(candidates) do
-        if loggedDrops[drop] then continue end
-        found = found + 1
-        sendLog(LogLevel.INFO, "Airdrop Candidate", "Examining drop: " .. drop:GetFullName())
-        local wallPart = nil
-        local walls = drop:FindFirstChild("Walls") or drop:FindFirstChild("walls")
-        if walls then wallPart = walls:FindFirstChild("Wall") or walls:FindFirstChild("wall") or walls:FindFirstChildWhichIsA("BasePart", true) end
-        if not wallPart then
-            for _, child in ipairs(drop:GetChildren()) do
-                if child:IsA("BasePart") and child.Name:lower() == "wall" then wallPart = child; break end
+
+    -- We'll accumulate drops found in both areas
+    local foundDrops = {}  -- table of drops to log (each element will be passed to sendAirdropEmbed later)
+    local function scanArea(areaName)
+        loadArea(areaName)
+        task.wait(0.5) -- let streaming settle
+        for _, drop in ipairs(workspace:GetChildren()) do
+            if drop.Name == "Drop" and drop:IsA("Model") and not loggedDrops[drop] then
+                -- Perform full airdrop detection (color, NPCs, timer)
+                -- (copy the detection logic from your existing checkAirdrops)
+                -- We'll call a helper function that returns true and fills data if valid
+                -- For brevity, I'll inline the detection here.
+                local wallPart = nil
+                local walls = drop:FindFirstChild("Walls") or drop:FindFirstChild("walls")
+                if walls then wallPart = walls:FindFirstChild("Wall") or walls:FindFirstChild("wall") or walls:FindFirstChildWhichIsA("BasePart", true) end
+                if not wallPart then
+                    for _, child in ipairs(drop:GetChildren()) do
+                        if child:IsA("BasePart") and child.Name:lower() == "wall" then wallPart = child; break end
+                    end
+                end
+                if not wallPart then
+                    local parts = {}
+                    for _, d in ipairs(drop:GetDescendants()) do if d:IsA("BasePart") then table.insert(parts, d) end end
+                    if #parts == 1 then wallPart = parts[1] elseif #parts > 1 then wallPart = parts[1] end
+                end
+                if not wallPart then continue end
+
+                local col = wallPart.Color
+                local r,g,b = math.round(col.R*255), math.round(col.G*255), math.round(col.B*255)
+                local colorDef = matchAirdropColor(r,g,b)
+                if not colorDef then continue end
+
+                local npcs = drop:FindFirstChild("NPCs")
+                if npcs and #npcs:GetChildren() > 0 then continue end
+
+                local countdown = drop:FindFirstChild("Countdown")
+                local timerLabel, timerText = nil, nil
+                if countdown then
+                    local billboard = countdown:FindFirstChildWhichIsA("BillboardGui", true)
+                    if billboard then timerLabel = billboard:FindFirstChildWhichIsA("TextLabel") end
+                    if timerLabel then timerText = timerLabel.Text end
+                end
+                if timerText then
+                    local initial = timerText
+                    task.wait(5)
+                    local new = timerLabel and timerLabel.Text
+                    if new and new ~= initial then timerText = new else timerText = "Unopened" end
+                else
+                    timerText = "No timer"
+                end
+
+                local pos = getDropPosition(drop)
+                local locName = pos and getNearestLocation(pos) or "Unknown Location"
+
+                -- Store the drop and its data to log later
+                table.insert(foundDrops, {
+                    drop = drop,
+                    colorDef = colorDef,
+                    location = locName,
+                    timer = timerText
+                })
+                loggedDrops[drop] = true
             end
         end
-        if not wallPart then
-            local parts = {}
-            for _, d in ipairs(drop:GetDescendants()) do if d:IsA("BasePart") then table.insert(parts, d) end end
-            if #parts == 1 then wallPart = parts[1] elseif #parts > 1 then wallPart = parts[1] end
-        end
-        if not wallPart then sendLog(LogLevel.WARNING, "Airdrop — No Wall Part", "Skipping.") continue end
-        local col = wallPart.Color
-        local r,g,b = math.round(col.R*255), math.round(col.G*255), math.round(col.B*255)
-        local colorDef = matchAirdropColor(r,g,b)
-        if not colorDef then sendLog(LogLevel.WARNING, "Airdrop — Unknown Color", string.format("RGB: %d,%d,%d",r,g,b)) continue end
-        local npcs = drop:FindFirstChild("NPCs")
-        if npcs and #npcs:GetChildren() > 0 then sendLog(LogLevel.INFO, "Airdrop — Opened", "Has NPCs, skipping.") continue end
-        local countdown = drop:FindFirstChild("Countdown")
-        local timerLabel, timerText = nil, nil
-        if countdown then
-            local billboard = countdown:FindFirstChildWhichIsA("BillboardGui", true)
-            if billboard then timerLabel = billboard:FindFirstChildWhichIsA("TextLabel") end
-            if timerLabel then timerText = timerLabel.Text end
-        end
-        if timerText then
-            local initial = timerText
-            task.wait(5)
-            local new = timerLabel and timerLabel.Text
-            if new and new ~= initial then timerText = new else timerText = "Unopened" end
-        else
-            timerText = "No timer"
-        end
-        local pos = getDropPosition(drop)
-        local locName = pos and getNearestLocation(pos) or "Unknown Location"
-        sendAirdropEmbed(webhook, drop, colorDef, locName, jobId, timerText)
-        loggedDrops[drop] = true
-        logged = logged + 1
+    end
+
+    -- Scan Casino area first
+    scanArea("Casino")
+    -- Then scan Tomb area
+    scanArea("Tomb")
+
+    -- Now log all found drops
+    for _, data in ipairs(foundDrops) do
+        sendAirdropEmbed(webhook, data.drop, data.colorDef, data.location, jobId, data.timer)
         sendLog(LogLevel.SUCCESS, "Airdrop Logged", "Logged.", {
-            {name="Type",value=colorDef.label},
-            {name="Location",value=locName},
-            {name="Timer",value=timerText}
+            {name="Type",value=data.colorDef.label},
+            {name="Location",value=data.location},
+            {name="Timer",value=data.timer}
         })
     end
-    if found > 0 then
-        sendLog(LogLevel.INFO, "Airdrop Scan", string.format("Found %d, Logged %d", found, logged))
+
+    if #foundDrops > 0 then
+        sendLog(LogLevel.INFO, "Airdrop Scan", string.format("Found %d airdrops total.", #foundDrops))
     end
+
     return loggedDrops
 end
 
+-- =============================================
+--           SCAN STORES (modified for Crown Jewel and Bank Truck)
+-- =============================================
 local function scanStores(player, jobId, loggedStores)
     local pg = player and player:FindFirstChild("PlayerGui")
     if not pg then sendLog(LogLevel.ERROR, "Store Scan", "PlayerGui not found.") return loggedStores end
@@ -965,18 +974,22 @@ local function scanStores(player, jobId, loggedStores)
                         if getgenv().RobberyToggles and not getgenv().RobberyToggles[storeName] then break end
                         if not (isOpen or isRobbery) then break end
                         if loggedStores[storeName] then break end
-                        teleportToMarker("Casino")
+
+                        -- Load area before attempting to read code
+                        loadArea("Casino")
+
                         local code = nil
                         local maxAttempts = 30
                         local attempt = 0
                         while not code and attempt < maxAttempts do
-                            teleportToMarker("Casino")
+                            -- No need to teleport; area is loaded
                             code = getCrownJewelCode()
                             if code and code ~= "" then break end
                             attempt = attempt + 1
                             task.wait(0.5)
                         end
                         if not code or code == "" then code = "Fail" end
+
                         local timer = getCrownJewelTimer()
                         if timer and timer <= 60 then
                             sendLog(LogLevel.INFO, "Crown Jewel Skipped", "Timer too low: " .. timer .. "s")
@@ -987,6 +1000,7 @@ local function scanStores(player, jobId, loggedStores)
                         sendLog(LogLevel.SUCCESS, "Crown Jewel Logged", display .. " " .. (isOpen and "Open" or "Under Robbery") .. " — Code: " .. code, {{name="Code",value=code}})
 
                     elseif storeName == "Mansion" then
+                        -- Mansion logic unchanged (no area loading needed as it uses GUI)
                         if getgenv().RobberyToggles and not getgenv().RobberyToggles.Mansion then break end
                         if loggedStores[storeName] then break end
                         if isRobbery then
@@ -1002,6 +1016,7 @@ local function scanStores(player, jobId, loggedStores)
                         sendLog(LogLevel.SUCCESS, "Mansion Logged", "Mansion " .. displayStatus .. " at " .. timeText, {{name="Status",value=displayStatus}})
 
                     elseif storeName == "Cargo_Train" or storeName == "Passenger_Train" then
+                        -- Train logic unchanged (no area loading needed)
                         if loggedStores[storeName] then break end
                         if not isClosed then
                             local pos = getTrainPosition(storeName)
@@ -1009,12 +1024,10 @@ local function scanStores(player, jobId, loggedStores)
                                 local locationName, distance = getClosestMarkerWithDistance(pos)
                                 local shouldLog = false
                                 if storeName == "Cargo_Train" then
-                                    -- Cargo: log unless location is "Gas" or "Jewelry" with distance > 700
                                     if not ((locationName == "Gas" or locationName == "Jewelry") and distance > 700) then
                                         shouldLog = true
                                     end
-                                else -- Passenger
-                                    -- Passenger: log unless location is "Casino" with distance < 500 or location is "Bank2"
+                                else
                                     if not (locationName == "Casino" and distance < 500) and locationName ~= "Bank2" then
                                         shouldLog = true
                                     end
@@ -1044,7 +1057,8 @@ local function scanStores(player, jobId, loggedStores)
                     elseif storeName == "Bank_Truck" then
                         if loggedStores[storeName] then break end
                         if isRobbery then
-                            teleportToMarker("Bank")
+                            -- Load area before logging
+                            loadArea("Bank")
                             if webhook and webhook ~= "" then
                                 if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
                                     sendBankTruckEmbed(webhook, storeName, "robbery", jobId)
@@ -1068,6 +1082,7 @@ local function scanStores(player, jobId, loggedStores)
                         sendLog(LogLevel.INFO, "Bounty", "Skipping store scan, will be logged by special robberies.")
 
                     else
+                        -- All other robberies (Jewelry, Power Plant, etc.)
                         if loggedStores[storeName] then break end
                         if isOpen then
                             if webhook and webhook ~= "" then
@@ -1140,6 +1155,9 @@ local function scanStores(player, jobId, loggedStores)
     return loggedStores
 end
 
+-- =============================================
+--           SPECIAL ROBBERIES (Plane, Oil Rig, Bounty)
+-- =============================================
 local function checkSpecialRobberies(jobId, loggedSpecials)
     local logged = loggedSpecials or {}
     local planeStatus = getPlaneStatus()
@@ -1337,7 +1355,7 @@ pcall(function()
         return
     end
     getgenv().ServerId = currentJobId
-    teleportToAllMarkers()
+    -- No initial teleport needed – area loading will be done per robbery.
     sendLog(LogLevel.INFO, "First Pass Started", "Scanning for open stores...")
     local loggedStores = {}
     local loggedDrops = {}
