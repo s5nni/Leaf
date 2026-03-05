@@ -198,12 +198,213 @@ local function getCrownJewelTimer()
     end
     return nil
 end
-local CARGO_START = Vector3.new(-374.895, -1.093, -6000.34)
-local CARGO_END = Vector3.new(-1659.279, 31.59, 268.128)
-local PASSENGER_START = CARGO_END
-local PASSENGER_END = CARGO_START
-local TRAIN_SPEED = 50
+local function getPlanePart()
+    local plane = workspace:FindFirstChild("Plane")
+    if not plane then return nil end
+    if plane:IsA("Model") then
+        return plane:FindFirstChild("CargoPlane") or plane.PrimaryPart
+    else
+        return plane
+    end
+end
 
+local function getClosestWaypointIndex(pos)
+    local bestIdx = nil
+    local bestDist = math.huge
+    for i, wp in ipairs(PLANE_WAYPOINTS) do
+        local dist = (pos - wp.cframe.Position).Magnitude
+        if dist < bestDist then
+            bestDist = dist
+            bestIdx = i
+        end
+    end
+    return bestIdx, bestDist
+end
+
+local function getPlaneSpeedAndETA()
+    local part = getPlanePart()
+    if not part then return nil, nil end
+    local pos1 = part.Position
+    task.wait(1)
+    local pos2 = part.Position
+    local speed = (pos2 - pos1).Magnitude
+    if speed < 0.1 then return nil, nil end
+    local airportPos = PLANE_WAYPOINTS[AIRPORT_WP_INDEX].cframe.Position
+    local distToAirport = (pos2 - airportPos).Magnitude
+    local eta = distToAirport / speed
+    return speed, eta
+end
+
+local function getPlaneStatus()
+    local part = getPlanePart()
+    if not part then return nil end
+    local pos = part.Position
+    local forward = part.CFrame.LookVector
+    local currentIdx, dist = getClosestWaypointIndex(pos)
+
+    if not currentIdx then return nil end
+
+    local airportPos = PLANE_WAYPOINTS[AIRPORT_WP_INDEX].cframe.Position
+    local distToAirport = (pos - airportPos).Magnitude
+    if distToAirport < 50 then
+        return "Landed"
+    end
+
+    local dirToAirport = (airportPos - pos).Unit
+    local dot = forward:Dot(dirToAirport)
+    local movingToward = dot > 0.2
+
+    if currentIdx < SPAWN_WP_INDEX then
+        return nil
+    elseif currentIdx >= SPAWN_WP_INDEX and currentIdx < TURN_START_INDEX then
+        if movingToward then
+            return "Just Spawned"
+        else
+            return nil
+        end
+    elseif currentIdx >= TURN_START_INDEX and currentIdx <= TURN_END_INDEX then
+        if movingToward then
+            return "Turning"
+        else
+            return nil
+        end
+    elseif currentIdx > TURN_END_INDEX and currentIdx < AIRPORT_WP_INDEX then
+        if movingToward then
+            return "Almost Arriving"
+        else
+            if currentIdx > AIRPORT_WP_INDEX and dot < -0.2 then
+                return "Taking Off"
+            else
+                return nil
+            end
+        end
+    elseif currentIdx >= AIRPORT_WP_INDEX then
+        if distToAirport < 50 then
+            return "Landed"
+        else
+            return "Taking Off"
+        end
+    end
+    return nil
+end
+
+local function sendPlaneEmbed(webhookUrl, status, jobId)
+    local now = os.time()
+    local joinLink = getJoinLink(jobId)
+    local teamCounts = getTeamCounts()
+    local criminals = teamCounts.Criminal
+    local police = teamCounts.Police
+    local prisoners = teamCounts.Prisoner
+    local crimAndPris = criminals + prisoners
+    local totalPlayers = crimAndPris + police
+    local roleId = getgenv().WebhookConfig.Roles["Cargo_Plane"]
+    local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
+    local imageUrl = getgenv().WebhookConfig.Images["Cargo_Plane"]
+
+    local speed, eta = getPlaneSpeedAndETA()
+    local etaField = eta and ("<t:" .. (now + eta) .. ":R>") or "Unknown"
+
+    local fields = {
+        { name = "📍 Status",   value = status, inline = true },
+        { name = "⏱️ ETA",      value = etaField, inline = true },
+        { name = "👥 Total Players", value = tostring(totalPlayers), inline = true },
+        { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
+        { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
+        { name = "🚔 Police",       value = tostring(police), inline = true },
+        { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
+    }
+
+    local embed = {
+        color = 3447003,
+        fields = fields,
+        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+    }
+    if imageUrl then embed.image = { url = imageUrl } end
+    local embedPayload = { embeds = { embed } }
+    if roleMention then embedPayload.content = roleMention end
+
+    local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
+    if not ok then return end
+    pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
+end
+local function getClosestMarkerWithDistance(pos)
+    local markers = workspace:FindFirstChild("RobberyMarkers")
+    if not markers then return "Unknown", math.huge end
+    local closestName = "Unknown"
+    local minDist = math.huge
+    for _, child in ipairs(markers:GetChildren()) do
+        if child:IsA("BasePart") then
+            local dist = (pos - child.Position).Magnitude
+            if dist < minDist then
+                minDist = dist
+                closestName = child.Name
+            end
+        end
+    end
+    return closestName, minDist
+end
+
+local function getTrainPosition(storeName)
+    local trains = workspace:FindFirstChild("Trains")
+    if not trains then return nil end
+    local trainModel
+    if storeName == "Cargo_Train" then
+        trainModel = trains:FindFirstChild("LocomotiveFront")
+    else
+        trainModel = trains:FindFirstChild("SteamEngine")
+    end
+    if not trainModel then return nil end
+    if trainModel:IsA("Model") then
+        if trainModel.PrimaryPart then
+            return trainModel.PrimaryPart.Position
+        else
+            for _, part in ipairs(trainModel:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    return part.Position
+                end
+            end
+        end
+    elseif trainModel:IsA("BasePart") then
+        return trainModel.Position
+    end
+    return nil
+end
+
+local function sendTrainEmbed(webhookUrl, storeName, locationName, jobId)
+    local now = os.time()
+    local joinLink = getJoinLink(jobId)
+    local teamCounts = getTeamCounts()
+    local criminals = teamCounts.Criminal
+    local police = teamCounts.Police
+    local prisoners = teamCounts.Prisoner
+    local crimAndPris = criminals + prisoners
+    local totalPlayers = crimAndPris + police
+    local roleId = getgenv().WebhookConfig.Roles[storeName]
+    local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
+    local imageUrl = getgenv().WebhookConfig.Images[storeName]
+    local isCargo = (storeName == "Cargo_Train")
+    local fields = {
+        { name = "📍 Location",    value = locationName,                           inline = true },
+        { name = "👥 Total Players", value = tostring(totalPlayers),                inline = true },
+        { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")",  inline = false },
+        { name = "🏃 Criminals",    value = tostring(crimAndPris),                  inline = true },
+        { name = "🚔 Police",       value = tostring(police),                       inline = true },
+        { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>",                  inline = true },
+    }
+    local embed = {
+        color = isCargo and 15105570 or 3066993,
+        fields = fields,
+        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+    }
+    if imageUrl then embed.image = { url = imageUrl } end
+    local embedPayload = { embeds = { embed } }
+    if roleMention then embedPayload.content = roleMention end
+    local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
+    if not ok then return end
+    pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
+end
 local function getOilRigTimer()
     local oilRig = workspace:FindFirstChild("OilRig")
     if not oilRig then return nil end
@@ -224,6 +425,7 @@ local function getOilRigTimer()
     end
     return nil
 end
+
 local function teleportToMarker(markerName)
     local player = game:GetService("Players").LocalPlayer
     if not player then return end
@@ -253,64 +455,9 @@ local function teleportToAllMarkers()
     teleportToMarker("Tomb")
 end
 
--- Helper to get train data for a specific train type
-local function getTrainData(storeName)
-    local trains = workspace:FindFirstChild("Trains")
-    if not trains then
-        print("DEBUG: Trains folder not found")
-        return nil
-    end
-    for _, loco in ipairs(trains:GetChildren()) do
-        if loco.Name:find("LocomotiveFront") then
-            local model = loco:FindFirstChild("Model")
-            if model then
-                local body = model:FindFirstChild("Body")
-                if body and body:IsA("BasePart") then
-                    local color = body.Color
-                    local r = math.round(color.R * 255)
-                    local g = math.round(color.G * 255)
-                    local b = math.round(color.B * 255)
-                    local pos = body.Position
-                    local isCargo = (r == 255 and g == 144 and b == 78)
-                    print(string.format("DEBUG: Found locomotive %s with RGB(%d,%d,%d) isCargo=%s", loco.Name, r, g, b, tostring(isCargo)))
-                    if (storeName == "Cargo_Train" and isCargo) or (storeName == "Passenger_Train" and not isCargo) then
-                        print(string.format("DEBUG: Matched train %s at position %s", storeName, tostring(pos)))
-                        return pos
-                    end
-                else
-                    print("DEBUG: Body not found in model")
-                end
-            else
-                print("DEBUG: Model not found in LocomotiveFront")
-            end
-        end
-    end
-    print("DEBUG: No matching locomotive found for " .. storeName)
-    return nil
-end
-
--- Helper to find closest RobberyMarker to a position (any child)
-local function getClosestMarkerName(pos)
-    local markers = workspace:FindFirstChild("RobberyMarkers")
-    if not markers then return "Unknown" end
-    local closestName = "Unknown"
-    local minDist = math.huge
-    for _, child in ipairs(markers:GetChildren()) do
-        if child:IsA("BasePart") then
-            local dist = (pos - child.Position).Magnitude
-            if dist < minDist then
-                minDist = dist
-                closestName = child.Name
-            end
-        end
-    end
-    return closestName
-end
-
 -- =============================================
---           CUSTOM EMBED FUNCTIONS
+--           CUSTOM EMBED FUNCTIONS (unchanged)
 -- =============================================
-
 local function sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
@@ -407,7 +554,6 @@ local function sendBankTruckEmbed(webhookUrl, storeName, status, jobId, timerSec
     sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
 end
 
--- Custom bounty embed (enhanced)
 local function sendBountyEmbed(webhookUrl, bountyPlayers, jobId)
     table.sort(bountyPlayers, function(a, b) return a.bounty > b.bounty end)
     local topPlayer = bountyPlayers[1]
@@ -450,11 +596,7 @@ local function sendBountyEmbed(webhookUrl, bountyPlayers, jobId)
     local embedPayload = { embeds = { embed } }
     if roleMention then embedPayload.content = roleMention end
     local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
-    if not ok then
-        -- Fallback to generic embed if custom fails
-        sendJewelryStoreEmbed(webhookUrl, "Bounty", "active", jobId)
-        return
-    end
+    if not ok then return end
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
 end
 
@@ -497,152 +639,6 @@ local function sendCrownJewelEmbed(webhookUrl, storeName, status, jobId, code, t
     local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
     if not ok then return end
     pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
-end
-
-local function getPlanePart()
-    local plane = workspace:FindFirstChild("Plane")
-    if not plane then return nil end
-    if plane:IsA("Model") then
-        return plane:FindFirstChild("CargoPlane") or plane.PrimaryPart
-    else
-        return plane
-    end
-end
-
-local function getClosestWaypointIndex(pos)
-    local bestIdx = nil
-    local bestDist = math.huge
-    for i, wp in ipairs(PLANE_WAYPOINTS) do
-        local dist = (pos - wp.cframe.Position).Magnitude
-        if dist < bestDist then
-            bestDist = dist
-            bestIdx = i
-        end
-    end
-    return bestIdx, bestDist
-end
-
-local function getPlaneSpeedAndETA()
-    local part = getPlanePart()
-    if not part then return nil, nil end
-    local pos1 = part.Position
-    task.wait(1)  -- measure over 1 second
-    local pos2 = part.Position
-    local speed = (pos2 - pos1).Magnitude  -- studs per second
-    if speed < 0.1 then return nil, nil end
-    local airportPos = PLANE_WAYPOINTS[AIRPORT_WP_INDEX].cframe.Position
-    local distToAirport = (pos2 - airportPos).Magnitude
-    local eta = distToAirport / speed
-    return speed, eta
-end
-
-local function getPlaneStatus()
-    local part = getPlanePart()
-    if not part then return nil end
-    local pos = part.Position
-    local forward = part.CFrame.LookVector
-    local currentIdx, dist = getClosestWaypointIndex(pos)
-
-    if not currentIdx then return nil end
-
-    -- Check if plane is at airport (close to airport waypoint)
-    local airportPos = PLANE_WAYPOINTS[AIRPORT_WP_INDEX].cframe.Position
-    local distToAirport = (pos - airportPos).Magnitude
-    if distToAirport < 50 then
-        return "Landed"
-    end
-
-    -- Determine if plane is moving toward airport or away
-    local dirToAirport = (airportPos - pos).Unit
-    local dot = forward:Dot(dirToAirport)
-    local movingToward = dot > 0.2  -- threshold, adjust if needed
-
-    -- Classify based on waypoint index
-    if currentIdx < SPAWN_WP_INDEX then
-        -- Before spawn? shouldn't happen, but treat as unknown
-        return nil
-    elseif currentIdx >= SPAWN_WP_INDEX and currentIdx < TURN_START_INDEX then
-        -- Straight line from spawn to turn start
-        if movingToward then
-            return "Just Spawned"
-        else
-            -- Moving away from airport (maybe returning?) – don't log
-            return nil
-        end
-    elseif currentIdx >= TURN_START_INDEX and currentIdx <= TURN_END_INDEX then
-        -- Turning phase
-        if movingToward then
-            return "Turning"
-        else
-            return nil
-        end
-    elseif currentIdx > TURN_END_INDEX and currentIdx < AIRPORT_WP_INDEX then
-        -- After turn, heading to airport
-        if movingToward then
-            return "Almost Arriving"
-        else
-            -- Past airport and facing away? that means takeoff
-            if currentIdx > AIRPORT_WP_INDEX and dot < -0.2 then
-                return "Taking Off"
-            else
-                return nil
-            end
-        end
-    elseif currentIdx >= AIRPORT_WP_INDEX then
-        -- At or past airport
-        if distToAirport < 50 then
-            return "Landed"
-        else
-            -- Past airport but not close enough – probably took off
-            return "Taking Off"
-        end
-    end
-    return nil
-end
-
-local function sendPlaneEmbed(webhookUrl, status, jobId)
-    local now = os.time()
-    local joinLink = getJoinLink(jobId)
-    local teamCounts = getTeamCounts()
-    local criminals = teamCounts.Criminal
-    local police = teamCounts.Police
-    local prisoners = teamCounts.Prisoner
-    local crimAndPris = criminals + prisoners
-    local totalPlayers = crimAndPris + police
-    local roleId = getgenv().WebhookConfig.Roles["Cargo_Plane"]
-    local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
-    local imageUrl = getgenv().WebhookConfig.Images["Cargo_Plane"]
-
-    local speed, eta = getPlaneSpeedAndETA()
-    local etaField = eta and ("<t:" .. (now + eta) .. ":R>") or "Unknown"
-
-    local fields = {
-        { name = "📍 Status",   value = status, inline = true },
-        { name = "⏱️ ETA",      value = etaField, inline = true },
-        { name = "👥 Total Players", value = tostring(totalPlayers), inline = true },
-        { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
-        { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
-        { name = "🚔 Police",       value = tostring(police), inline = true },
-        { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
-    }
-
-    local embed = {
-        color = 3447003,
-        fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
-        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-    }
-    if imageUrl then embed.image = { url = imageUrl } end
-    local embedPayload = { embeds = { embed } }
-    if roleMention then embedPayload.content = roleMention end
-
-    local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(embedPayload) end)
-    if not ok then return end
-    pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded }) end)
-end
--- Train embed temporarily reverted to generic
-local function sendTrainEmbed(webhookUrl, storeName, jobId)
-    sendJewelryStoreEmbed(webhookUrl, storeName, "robbery", jobId)
 end
 
 local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId)
@@ -719,31 +715,21 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
 end
 
 -- =============================================
---           BOUNTY DETECTION (Closest Board)
+--           BOUNTY DETECTION (unchanged)
 -- =============================================
-
 local function checkBounties(jobId, loggedSpecials)
-    if loggedSpecials.Bounty then 
-        print("DEBUG Bounty: Already logged this server, skipping.")
-        return loggedSpecials 
-    end
-    if getgenv().RobberyToggles and not getgenv().RobberyToggles.Bounty then 
-        print("DEBUG Bounty: Bounty toggled off.")
-        return loggedSpecials 
-    end
+    if loggedSpecials.Bounty then return loggedSpecials end
+    if getgenv().RobberyToggles and not getgenv().RobberyToggles.Bounty then return loggedSpecials end
 
     local webhook = getgenv().WebhookConfig.Webhooks["Bounty"]
     if not webhook or webhook == "" then
         sendLog(LogLevel.WARNING, "Bounty Webhook Missing", "No webhook configured for Bounty.")
-        print("DEBUG Bounty: Webhook missing.")
         return loggedSpecials
     end
-    print("DEBUG Bounty: Webhook found.")
 
     local minBounty = 5000
     if getgenv().RobberyToggles and getgenv().RobberyToggles.MinBounty then
         minBounty = getgenv().RobberyToggles.MinBounty
-        print("DEBUG Bounty: MinBounty set to " .. minBounty)
     end
 
     -- Find closest BountyBoard
@@ -751,10 +737,8 @@ local function checkBounties(jobId, loggedSpecials)
     local hrp = localPlayer and localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not hrp then
         sendLog(LogLevel.WARNING, "Bounty Scan", "Could not get HumanoidRootPart to determine closest board. Skipping.")
-        print("DEBUG Bounty: No HRP.")
         return loggedSpecials
     end
-    print("DEBUG Bounty: HRP found.")
 
     local closestBoard = nil
     local closestDist = math.huge
@@ -773,7 +757,6 @@ local function checkBounties(jobId, loggedSpecials)
             end
             if pos then
                 local dist = (pos - hrp.Position).Magnitude
-                print(string.format("DEBUG Bounty: Found BountyBoard at dist %.2f", dist))
                 if dist < closestDist then
                     closestDist = dist
                     closestBoard = obj
@@ -784,21 +767,16 @@ local function checkBounties(jobId, loggedSpecials)
 
     if not closestBoard then
         sendLog(LogLevel.INFO, "Bounty Scan", "No BountyBoard found.")
-        print("DEBUG Bounty: No BountyBoard found.")
         return loggedSpecials
     end
-    print("DEBUG Bounty: Closest board selected.")
 
     local bountyPlayers = {}
     local boardModel = closestBoard:FindFirstChild("Board")
     if boardModel then
-        print("DEBUG Bounty: Found Board")
         local mostWanted = boardModel:FindFirstChild("MostWanted")
         if mostWanted then
-            print("DEBUG Bounty: Found MostWanted")
             local board2 = mostWanted:FindFirstChild("Board")
             if board2 then
-                print("DEBUG Bounty: Found inner Board, children count: " .. #board2:GetChildren())
                 for _, playerFrame in ipairs(board2:GetChildren()) do
                     if playerFrame.Name == "PlayerFrame" then
                         local nameText = playerFrame:FindFirstChild("NameText")
@@ -807,7 +785,6 @@ local function checkBounties(jobId, loggedSpecials)
                             local displayName = nameText.Text:gsub("^%s+", ""):gsub("%s+$", "")
                             local bountyStr = bountyText.Text:gsub("[$,]", "")
                             local bounty = tonumber(bountyStr)
-                            print(string.format("DEBUG Bounty: PlayerFrame: displayName='%s', raw='%s', parsed=%s", displayName, bountyText.Text, tostring(bounty)))
                             if bounty and bounty >= minBounty then
                                 local targetPlayer = nil
                                 for _, plr in ipairs(game:GetService("Players"):GetPlayers()) do
@@ -817,7 +794,6 @@ local function checkBounties(jobId, loggedSpecials)
                                     end
                                 end
                                 if targetPlayer then
-                                    print(string.format("DEBUG Bounty: Matched player %s (userId=%d)", targetPlayer.Name, targetPlayer.UserId))
                                     table.insert(bountyPlayers, {
                                         username = targetPlayer.Name,
                                         userId = targetPlayer.UserId,
@@ -825,7 +801,6 @@ local function checkBounties(jobId, loggedSpecials)
                                         displayName = displayName
                                     })
                                 else
-                                    print("DEBUG Bounty: No player found with display name " .. displayName)
                                     table.insert(bountyPlayers, {
                                         username = displayName,
                                         userId = nil,
@@ -833,31 +808,19 @@ local function checkBounties(jobId, loggedSpecials)
                                         displayName = displayName
                                     })
                                 end
-                            else
-                                print("DEBUG Bounty: Bounty below min or invalid.")
                             end
-                        else
-                            print("DEBUG Bounty: PlayerFrame missing NameText or BountyText")
                         end
                     end
                 end
-            else
-                print("DEBUG Bounty: inner Board not found")
             end
-        else
-            print("DEBUG Bounty: MostWanted not found")
         end
-    else
-        print("DEBUG Bounty: Board not found under BountyBoard")
     end
 
     if #bountyPlayers > 0 then
-        print("DEBUG Bounty: Sending embed with " .. #bountyPlayers .. " players.")
         sendBountyEmbed(webhook, bountyPlayers, jobId)
         loggedSpecials.Bounty = true
         sendLog(LogLevel.SUCCESS, "Bounty Logged", "Found " .. #bountyPlayers .. " player(s) with bounty ≥ $" .. minBounty .. ".")
     else
-        print("DEBUG Bounty: No players with bounty ≥ $" .. minBounty .. " found.")
         sendLog(LogLevel.INFO, "Bounty Scan", "No players with bounty ≥ $" .. minBounty .. " found.")
     end
 
@@ -1041,16 +1004,38 @@ local function scanStores(player, jobId, loggedStores)
                     elseif storeName == "Cargo_Train" or storeName == "Passenger_Train" then
                         if loggedStores[storeName] then break end
                         if not isClosed then
-                            if webhook and webhook ~= "" then
-                                if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
-                                    sendTrainEmbed(webhook, storeName, jobId)
-                                    loggedStores[storeName] = true
-                                    sendLog(LogLevel.SUCCESS, "Train Logged", display .. " active.", {{name="Store",value=display}})
+                            local pos = getTrainPosition(storeName)
+                            if pos then
+                                local locationName, distance = getClosestMarkerWithDistance(pos)
+                                local shouldLog = false
+                                if storeName == "Cargo_Train" then
+                                    -- Cargo: log unless location is "Gas" or "Jewelry" with distance > 700
+                                    if not ((locationName == "Gas" or locationName == "Jewelry") and distance > 700) then
+                                        shouldLog = true
+                                    end
+                                else -- Passenger
+                                    -- Passenger: log unless location is "Casino" with distance < 500 or location is "Bank2"
+                                    if not (locationName == "Casino" and distance < 500) and locationName ~= "Bank2" then
+                                        shouldLog = true
+                                    end
+                                end
+                                if shouldLog then
+                                    if webhook and webhook ~= "" then
+                                        if getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
+                                            sendTrainEmbed(webhook, storeName, locationName, jobId)
+                                            loggedStores[storeName] = true
+                                            sendLog(LogLevel.SUCCESS, "Train Logged", display .. " active near " .. locationName, {{name="Store",value=display}})
+                                        else
+                                            sendLog(LogLevel.INFO, "Train — Toggled Off", display .. " active but disabled.")
+                                        end
+                                    else
+                                        sendLog(LogLevel.WARNING, "Train — No Webhook", display .. " active but no webhook.")
+                                    end
                                 else
-                                    sendLog(LogLevel.INFO, "Train — Toggled Off", display .. " active but disabled.")
+                                    sendLog(LogLevel.INFO, "Train Not Logged", display .. " at " .. locationName .. " (distance " .. distance .. ") filtered.")
                                 end
                             else
-                                sendLog(LogLevel.WARNING, "Train — No Webhook", display .. " active but no webhook.")
+                                sendLog(LogLevel.WARNING, "Train Position Not Found", "Could not get position for " .. storeName)
                             end
                         else
                             sendLog(LogLevel.INFO, "Train Not Active", display .. " is closed.")
@@ -1182,7 +1167,7 @@ local function checkSpecialRobberies(jobId, loggedSpecials)
 end
 
 -- =============================================
---           SERVER HOP LOGIC
+--           SERVER HOP LOGIC (unchanged)
 -- =============================================
 local function getServerIP(placeId, serverId)
     local success, response = pcall(function()
