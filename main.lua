@@ -936,8 +936,7 @@ local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId, isUnderRobbery)
     end
 
     local embed = {
-        title = "🛢️ Oil Rig Robbery!",
-        color = 16753920,
+        color = isUnderRobbery and 16753920 or 3066993,
         fields = fields,
         footer = { text = "Leaf Logger " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
