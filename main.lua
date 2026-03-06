@@ -26,12 +26,12 @@ local PLANE_WAYPOINTS = (function()
     end
 end)()
 
--- Plane Phase Indices (set these based on your waypoint comments!)
-local PLANE_INDICES = {
-    SPAWN       = 21,   -- WP48 became WP21
-    TURN_START  = 370,  -- original WP370
-    TURN_END    = 395,  -- original WP395
-    AIRPORT     = 327,  -- original WP327
+-- Plane Phase Ranges (set these based on your waypoint indices!)
+local PLANE_PHASES = {
+    JUST_SPAWNED  = { start = 1,   stop = 70 },   -- WP1 to WP70
+    ARRIVING      = { start = 71,  stop = 130 },  -- WP71 to WP130
+    LANDING       = { start = 131, stop = 175 },  -- WP131 to WP175
+    TAKEOFF       = { start = 176 },               -- WP176 and above (not logged)
 }
 
 -- Train Filtering Rules
@@ -371,16 +371,16 @@ local function getCrownJewelTimer()
 end
 
 -- =============================================
--- PLANE DETECTION
+-- PLANE DETECTION (based on waypoint ranges)
 -- =============================================
 
 local function getPlanePart()
     local plane = workspace:FindFirstChild("Plane")
     if not plane then return nil end
     if plane:IsA("Model") then
-        return plane:FindFirstChild("CargoPlane") or plane.PrimaryPart
+        return plane:FindFirstChild("CargoPlane")
     else
-        return plane
+        return false
     end
 end
 
@@ -404,9 +404,11 @@ local function getPlaneSpeedAndETA()
     local pos2 = part.Position
     local speed = (pos2 - pos1).Magnitude
     if speed < 0.1 then return nil, nil end
-    local airportPos = PLANE_WAYPOINTS[PLANE_INDICES.AIRPORT].cframe.Position
-    local distToAirport = (pos2 - airportPos).Magnitude
-    local eta = distToAirport / speed
+    -- For ETA we need a target; we'll use the last waypoint (airport) – you may adjust.
+    local targetIdx = PLANE_PHASES.LANDING.stop or #PLANE_WAYPOINTS
+    local targetPos = PLANE_WAYPOINTS[targetIdx].cframe.Position
+    local distToTarget = (pos2 - targetPos).Magnitude
+    local eta = distToTarget / speed
     return speed, eta
 end
 
@@ -414,36 +416,21 @@ local function getPlaneStatus()
     local part = getPlanePart()
     if not part then return nil end
     local pos = part.Position
-    local forward = part.CFrame.LookVector
     local currentIdx, _ = getClosestWaypointIndex(pos)
     if not currentIdx then return nil end
 
-    local airportPos = PLANE_WAYPOINTS[PLANE_INDICES.AIRPORT].cframe.Position
-    local distToAirport = (pos - airportPos).Magnitude
-    if distToAirport < 50 then return "Landed" end
-
-    local dirToAirport = (airportPos - pos).Unit
-    local dot = forward:Dot(dirToAirport)
-    local movingToward = dot > 0.2
-
-    if currentIdx < PLANE_INDICES.SPAWN then
+    -- Determine phase based on index
+    if currentIdx >= PLANE_PHASES.JUST_SPAWNED.start and currentIdx <= PLANE_PHASES.JUST_SPAWNED.stop then
+        return "Just Spawned"
+    elseif currentIdx >= PLANE_PHASES.ARRIVING.start and currentIdx <= PLANE_PHASES.ARRIVING.stop then
+        return "Almost Arriving"
+    elseif currentIdx >= PLANE_PHASES.LANDING.start and currentIdx <= PLANE_PHASES.LANDING.stop then
+        return "Almost Landing"
+    elseif currentIdx >= PLANE_PHASES.TAKEOFF.start then
+        return nil  -- Took off, do not log
+    else
         return nil
-    elseif currentIdx >= PLANE_INDICES.SPAWN and currentIdx < PLANE_INDICES.TURN_START then
-        return movingToward and "Just Spawned" or nil
-    elseif currentIdx >= PLANE_INDICES.TURN_START and currentIdx <= PLANE_INDICES.TURN_END then
-        return movingToward and "Turning" or nil
-    elseif currentIdx > PLANE_INDICES.TURN_END and currentIdx < PLANE_INDICES.AIRPORT then
-        if movingToward then
-            return "Almost Arriving"
-        elseif currentIdx > PLANE_INDICES.AIRPORT and dot < -0.2 then
-            return "Taking Off"
-        else
-            return nil
-        end
-    elseif currentIdx >= PLANE_INDICES.AIRPORT then
-        return (distToAirport < 50) and "Landed" or "Taking Off"
     end
-    return nil
 end
 
 -- =============================================
