@@ -34,15 +34,37 @@ local PLANE_PHASES = {
     TAKEOFF       = { start = 176 },               -- WP176 and above (not logged)
 }
 
--- Train Filtering Rules
-local TRAIN_FILTERS = {
-    Cargo = {
-        BLOCKED_LOCATIONS = { "Gas", "Jewelry" },  -- Block these entirely
-    },
-    Passenger = {
-        BLOCKED_LOCATIONS = { "Casino", "Bank2" }, -- Block these entirely
-    },
+-- Train Location Mapper
+local CARGO_LOCATION_MAP = {
+    Bank        = { display = "Rising City",       log = true },
+    Bank2       = { display = "Just Started",      log = true },
+    Casino      = { display = "Cactus Valley",     log = true },
+    Donut       = { display = "Volcano Tunnel",    log = true },
+    Gas         = { display = "Closing",           log = false },
+    Jewelry     = { display = "Closing",           log = false },
+    Mansion     = { display = "Volcano Tunnel",    log = true },
+    Museum      = { display = "Dunes",             log = true },
+    OilRig      = { display = "Just Started",      log = true },
+    PowerPlant  = { display = "Closing",           log = false },
+    Tomb        = { display = "Dunes",             log = true },
 }
+
+local PASSENGER_LOCATION_MAP = {
+    Bank        = { display = "Rising City",       log = true },
+    Bank2       = { display = "Closing",           log = false },
+    Casino      = { display = "Closing",           log = false },
+    Donut       = { display = "Volcano Tunnel",    log = true },
+    Gas         = { display = "Just Started",      log = true },
+    Jewelry     = { display = "Crime Port Tunnel", log = true },
+    Mansion     = { display = "Volcano Tunnel",    log = true },
+    Museum      = { display = "Dunes",             log = true },
+    OilRig      = { display = "Closing",           log = false },
+    PowerPlant  = { display = "Crime Port Tunnel", log = true },
+    Tomb        = { display = "Dunes",             log = true },
+}
+
+-- Default for any unmapped marker (log with original name)
+local DEFAULT_LOCATION = { display = nil, log = true } -- nil display means use original name
 
 -- Minimum bounty to log (can be overridden by RobberyToggles.MinBounty)
 local DEFAULT_MIN_BOUNTY = 5000
@@ -378,9 +400,9 @@ local function getPlanePart()
     local plane = workspace:FindFirstChild("Plane")
     if not plane then return nil end
     if plane:IsA("Model") then
-        return plane:FindFirstChild("CargoPlane")
+        return plane:FindFirstChild("CargoPlane") or plane.PrimaryPart
     else
-        return false
+        return plane
     end
 end
 
@@ -396,22 +418,6 @@ local function getClosestWaypointIndex(pos)
     return bestIdx, bestDist
 end
 
-local function getPlaneSpeedAndETA()
-    local part = getPlanePart()
-    if not part then return nil, nil end
-    local pos1 = part.Position
-    task.wait(1)
-    local pos2 = part.Position
-    local speed = (pos2 - pos1).Magnitude
-    if speed < 0.1 then return nil, nil end
-    -- For ETA we need a target; we'll use the last waypoint (airport) – you may adjust.
-    local targetIdx = PLANE_PHASES.LANDING.stop or #PLANE_WAYPOINTS
-    local targetPos = PLANE_WAYPOINTS[targetIdx].cframe.Position
-    local distToTarget = (pos2 - targetPos).Magnitude
-    local eta = distToTarget / speed
-    return speed, eta
-end
-
 local function getPlaneStatus()
     local part = getPlanePart()
     if not part then return nil end
@@ -419,7 +425,6 @@ local function getPlaneStatus()
     local currentIdx, _ = getClosestWaypointIndex(pos)
     if not currentIdx then return nil end
 
-    -- Determine phase based on index
     if currentIdx >= PLANE_PHASES.JUST_SPAWNED.start and currentIdx <= PLANE_PHASES.JUST_SPAWNED.stop then
         return "Just Spawned"
     elseif currentIdx >= PLANE_PHASES.ARRIVING.start and currentIdx <= PLANE_PHASES.ARRIVING.stop then
@@ -434,7 +439,7 @@ local function getPlaneStatus()
 end
 
 -- =============================================
--- TRAIN DETECTION
+-- TRAIN DETECTION (with location mapping)
 -- =============================================
 
 local function getClosestMarkerWithDistance(pos)
@@ -801,7 +806,7 @@ local function sendCrownJewelEmbed(webhookUrl, storeName, isOpen, jobId, code, t
     if ok then pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = enc }) end) end
 end
 
--- Plane (custom)
+-- Plane (custom, no ETA)
 local function sendPlaneEmbed(webhookUrl, status, jobId)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
@@ -811,11 +816,8 @@ local function sendPlaneEmbed(webhookUrl, status, jobId)
     local roleId = getgenv().WebhookConfig.Roles["Cargo_Plane"]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = getgenv().WebhookConfig.Images["Cargo_Plane"]
-    local speed, eta = getPlaneSpeedAndETA()
-    local etaField = eta and ("<t:" .. (now + eta) .. ":R>") or "Unknown"
     local fields = {
         { name = "📍 Status",   value = status,   inline = true },
-        { name = "⏱️ ETA",      value = etaField, inline = true },
         { name = "👥 Total Players", value = tostring(total), inline = true },
         { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
         { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
@@ -835,7 +837,7 @@ local function sendPlaneEmbed(webhookUrl, status, jobId)
     if ok then pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = enc }) end) end
 end
 
--- Train (custom, with location only)
+-- Train (custom, with location mapping)
 local function sendTrainEmbed(webhookUrl, storeName, locationName, jobId)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
@@ -1145,39 +1147,23 @@ local function scanStores(player, jobId, loggedStores)
                         if not isClosed then
                             local pos = getTrainPosition(storeName)
                             if pos then
-                                local locName, dist = getClosestMarkerWithDistance(pos)
-                                local shouldLog = false
-                                if storeName == "Cargo_Train" then
-                                    -- Block if location is in blocked list (Gas, Jewelry)
-                                    local blocked = false
-                                    for _, b in ipairs(TRAIN_FILTERS.Cargo.BLOCKED_LOCATIONS) do
-                                        if locName == b then
-                                            blocked = true
-                                            break
-                                        end
-                                    end
-                                    shouldLog = not blocked
-                                else -- Passenger
-                                    -- Block if location is in blocked list (Casino, Bank2)
-                                    local blocked = false
-                                    for _, b in ipairs(TRAIN_FILTERS.Passenger.BLOCKED_LOCATIONS) do
-                                        if locName == b then
-                                            blocked = true
-                                            break
-                                        end
-                                    end
-                                    shouldLog = not blocked
+                                local rawLocName, dist = getClosestMarkerWithDistance(pos)
+                                local map = (storeName == "Cargo_Train") and CARGO_LOCATION_MAP or PASSENGER_LOCATION_MAP
+                                local entry = map[rawLocName]
+                                if not entry then
+                                    entry = DEFAULT_LOCATION
                                 end
-                                if shouldLog then
+                                if entry.log then
+                                    local displayName = entry.display or rawLocName
                                     if webhook and webhook ~= "" and getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
-                                        sendTrainEmbed(webhook, storeName, locName, jobId)
+                                        sendTrainEmbed(webhook, storeName, displayName, jobId)
                                         loggedStores[storeName] = true
-                                        sendLog(LogLevel.SUCCESS, "Train Logged", display .. " active near " .. locName, {{ name = "Store", value = display }})
+                                        sendLog(LogLevel.SUCCESS, "Train Logged", display .. " active near " .. displayName, {{ name = "Store", value = display }})
                                     else
                                         sendLog(LogLevel.INFO, "Train — Toggled Off", display .. " active but disabled.")
                                     end
                                 else
-                                    sendLog(LogLevel.INFO, "Train Not Logged", display .. " at " .. locName .. " blocked by filter.")
+                                    sendLog(LogLevel.INFO, "Train Not Logged", display .. " at " .. rawLocName .. " is blocked.")
                                 end
                             else
                                 sendLog(LogLevel.WARNING, "Train Position Not Found", "Could not get position for " .. storeName)
