@@ -439,7 +439,7 @@ local function getPlaneStatus()
 end
 
 -- =============================================
--- TRAIN DETECTION (with location mapping)
+-- TRAIN DETECTION (with location mapping, ignoring icon color)
 -- =============================================
 
 local function getClosestMarkerWithDistance(pos)
@@ -478,7 +478,7 @@ local function getTrainPosition(storeName)
 end
 
 -- =============================================
--- OIL RIG TIMER
+-- OIL RIG TIMER & STATUS
 -- =============================================
 
 local function getOilRigTimer()
@@ -495,6 +495,35 @@ local function getOilRigTimer()
                 if textLabel and textLabel.Text and textLabel.Text ~= "" then
                     local seconds = parseTimerString(textLabel.Text)
                     if seconds then return seconds end
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function getOilRigStatus()
+    local player = game:GetService("Players").LocalPlayer
+    if not player then return nil end
+    local pg = player:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local wm = pg:FindFirstChild("WorldMarkersGui")
+    if not wm then return nil end
+    local iconId = getgenv().WebhookConfig.Icons["Oil_Rig"]
+    for _, img in ipairs(wm:GetDescendants()) do
+        if img:IsA("ImageLabel") and img.Image == iconId then
+            local parent = img.Parent
+            if parent and parent:IsA("ImageLabel") then
+                local col = parent.ImageColor3
+                local r = math.round(col.R * 255)
+                local g = math.round(col.G * 255)
+                local b = math.round(col.B * 255)
+                if r == 0 and g == 255 and b == 0 then
+                    return "open"
+                elseif r == 255 and g == 0 and b == 0 then
+                    return "closed"
+                else
+                    return "robbery"
                 end
             end
         end
@@ -731,7 +760,7 @@ local function sendTombEmbed(webhookUrl, storeName, isOpen, jobId, timerSeconds)
     sendJewelryStoreEmbed(webhookUrl, storeName, isOpen, jobId, timerSeconds)
 end
 
--- Bank Truck
+-- Bank Truck (logs only when open)
 local function sendBankTruckEmbed(webhookUrl, storeName, isOpen, jobId, timerSeconds)
     sendJewelryStoreEmbed(webhookUrl, storeName, isOpen, jobId, timerSeconds)
 end
@@ -1164,48 +1193,45 @@ local function scanStores(player, jobId, loggedStores)
                     -- ========== TRAINS ==========
                     elseif storeName == "Cargo_Train" or storeName == "Passenger_Train" then
                         if loggedStores[storeName] then break end
-                        if not isClosed then
-                            local pos = getTrainPosition(storeName)
-                            if pos then
-                                local rawLocName, dist = getClosestMarkerWithDistance(pos)
-                                local map = (storeName == "Cargo_Train") and CARGO_LOCATION_MAP or PASSENGER_LOCATION_MAP
-                                local entry = map[rawLocName]
-                                if not entry then
-                                    entry = DEFAULT_LOCATION
-                                end
-                                if entry.log then
-                                    local displayName = entry.display or rawLocName
-                                    if webhook and webhook ~= "" and getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
-                                        sendTrainEmbed(webhook, storeName, displayName, jobId)
-                                        loggedStores[storeName] = true
-                                        sendLog(LogLevel.SUCCESS, "Train Logged", display .. " active near " .. displayName, {{ name = "Store", value = display }})
-                                    else
-                                        sendLog(LogLevel.INFO, "Train — Toggled Off", display .. " active but disabled.")
-                                    end
+                        -- Trains are logged regardless of icon color; we only rely on location mapping.
+                        local pos = getTrainPosition(storeName)
+                        if pos then
+                            local rawLocName, dist = getClosestMarkerWithDistance(pos)
+                            local map = (storeName == "Cargo_Train") and CARGO_LOCATION_MAP or PASSENGER_LOCATION_MAP
+                            local entry = map[rawLocName]
+                            if not entry then
+                                entry = DEFAULT_LOCATION
+                            end
+                            if entry.log then
+                                local displayName = entry.display or rawLocName
+                                if webhook and webhook ~= "" and getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
+                                    sendTrainEmbed(webhook, storeName, displayName, jobId)
+                                    loggedStores[storeName] = true
+                                    sendLog(LogLevel.SUCCESS, "Train Logged", display .. " active near " .. displayName, {{ name = "Store", value = display }})
                                 else
-                                    sendLog(LogLevel.INFO, "Train Not Logged", display .. " at " .. rawLocName .. " is blocked.")
+                                    sendLog(LogLevel.INFO, "Train — Toggled Off", display .. " active but disabled.")
                                 end
                             else
-                                sendLog(LogLevel.WARNING, "Train Position Not Found", "Could not get position for " .. storeName)
+                                sendLog(LogLevel.INFO, "Train Not Logged", display .. " at " .. rawLocName .. " is blocked.")
                             end
                         else
-                            sendLog(LogLevel.INFO, "Train Not Active", display .. " is closed.")
+                            sendLog(LogLevel.WARNING, "Train Position Not Found", "Could not get position for " .. storeName)
                         end
 
-                    -- ========== BANK TRUCK ==========
+                    -- ========== BANK TRUCK (only when open) ==========
                     elseif storeName == "Bank_Truck" then
                         if loggedStores[storeName] then break end
-                        if isRobbery then
+                        if isOpen then
                             if webhook and webhook ~= "" and getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
-                                sendBankTruckEmbed(webhook, storeName, isOpen, jobId)
+                                sendBankTruckEmbed(webhook, storeName, true, jobId)
                                 loggedStores[storeName] = true
-                                sendLog(LogLevel.SUCCESS, "Robbery Logged", display .. " under robbery.", {{ name = "Store", value = display }})
+                                sendLog(LogLevel.SUCCESS, "Bank Truck Logged", display .. " is open.", {{ name = "Store", value = display }})
                             else
-                                sendLog(LogLevel.INFO, "Bank Truck — Toggled Off", display .. " robbery disabled.")
+                                sendLog(LogLevel.INFO, "Bank Truck — Toggled Off", display .. " open but disabled.")
                             end
                         end
 
-                    -- ========== OIL RIG ==========
+                    -- ========== OIL RIG (handled in special robberies) ==========
                     elseif storeName == "Oil_Rig" then
                         sendLog(LogLevel.INFO, "Oil Rig Robbery", "Skipping store scan, will be logged by special robberies.")
 
@@ -1297,22 +1323,31 @@ local function checkSpecialRobberies(jobId, loggedSpecials)
         end
     end
     -- Oil Rig
-    -- Oil Rig (logs both open and under robbery)
-    local oilTime = getOilRigTimer()
     if not logged.OilRig then
-        if oilTime and oilTime > 60 then
-            -- Under robbery with good timer
-            sendOilRigEmbed(webhook, oilTime, jobId, true)
-            logged.OilRig = true
-            sendLog(LogLevel.SUCCESS, "Oil Rig Logged", "Oil Rig under robbery.")
-        elseif oilTime and oilTime <= 60 then
-            -- Under robbery but timer too low
-            sendLog(LogLevel.INFO, "Oil Rig Skipped", "Timer too low: " .. oilTime .. "s")
-        else
-            -- Open robbery (no timer)
-            sendOilRigEmbed(webhook, nil, jobId, false)
-            logged.OilRig = true
-            sendLog(LogLevel.SUCCESS, "Oil Rig Logged", "Oil Rig is open.")
+        local status = getOilRigStatus()
+        if status == "open" or status == "robbery" then
+            local webhook = getgenv().WebhookConfig.Webhooks["Oil_Rig"]
+            if webhook and webhook ~= "" then
+                if status == "robbery" then
+                    local oilTime = getOilRigTimer()
+                    if oilTime and oilTime > 60 then
+                        sendOilRigEmbed(webhook, oilTime, jobId, true)
+                        logged.OilRig = true
+                        sendLog(LogLevel.SUCCESS, "Oil Rig Logged", "Oil Rig under robbery.")
+                    elseif oilTime and oilTime <= 60 then
+                        sendLog(LogLevel.INFO, "Oil Rig Skipped", "Timer too low: " .. oilTime .. "s")
+                    else
+                        -- No timer but robbery status – should not happen, but log as open?
+                        sendOilRigEmbed(webhook, nil, jobId, false)
+                        logged.OilRig = true
+                        sendLog(LogLevel.SUCCESS, "Oil Rig Logged", "Oil Rig is open (no timer).")
+                    end
+                else -- open
+                    sendOilRigEmbed(webhook, nil, jobId, false)
+                    logged.OilRig = true
+                    sendLog(LogLevel.SUCCESS, "Oil Rig Logged", "Oil Rig is open.")
+                end
+            end
         end
     end
     -- Bounty
