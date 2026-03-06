@@ -885,6 +885,7 @@ local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId, isUnderRobbery)
     
     local fields
     if isUnderRobbery then
+        -- Under robbery: show timer
         fields = {
             { name = "⏳ Closes in",   value = "<t:" .. (now + timeRemaining) .. ":R>", inline = true },
             { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
@@ -894,6 +895,7 @@ local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId, isUnderRobbery)
             { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
         }
     else
+        -- Open: show status "Open"
         fields = {
             { name = "📍 Status",      value = "Open",          inline = true },
             { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
@@ -905,6 +907,7 @@ local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId, isUnderRobbery)
     end
 
     local embed = {
+        title = "🛢️ Oil Rig Robbery!",
         color = 16753920,
         fields = fields,
         footer = { text = "Leaf Logger " .. BOT_VERSION },
@@ -1294,16 +1297,23 @@ local function checkSpecialRobberies(jobId, loggedSpecials)
         end
     end
     -- Oil Rig
+    -- Oil Rig (logs both open and under robbery)
     local oilTime = getOilRigTimer()
-    if oilTime and oilTime > 60 and not logged.OilRig then
-        sendOilRigEmbed(webhook, oilTime, jobId, true)  -- Under robbery
-    elseif oilTime and oilTime <= 60 then
-        sendLog(LogLevel.INFO, "Oil Rig Skipped", "Timer too low: " .. oilTime .. "s")
-    elseif not oilTime and not logged.OilRig then
-        -- Oil Rig is open (no timer)
-        sendOilRigEmbed(webhook, nil, jobId, false)
-        logged.OilRig = true
-        sendLog(LogLevel.SUCCESS, "Oil Rig Logged", "Oil Rig is open.")
+    if not logged.OilRig then
+        if oilTime and oilTime > 60 then
+            -- Under robbery with good timer
+            sendOilRigEmbed(webhook, oilTime, jobId, true)
+            logged.OilRig = true
+            sendLog(LogLevel.SUCCESS, "Oil Rig Logged", "Oil Rig under robbery.")
+        elseif oilTime and oilTime <= 60 then
+            -- Under robbery but timer too low
+            sendLog(LogLevel.INFO, "Oil Rig Skipped", "Timer too low: " .. oilTime .. "s")
+        else
+            -- Open robbery (no timer)
+            sendOilRigEmbed(webhook, nil, jobId, false)
+            logged.OilRig = true
+            sendLog(LogLevel.SUCCESS, "Oil Rig Logged", "Oil Rig is open.")
+        end
     end
     -- Bounty
     logged = checkBounties(jobId, logged)
