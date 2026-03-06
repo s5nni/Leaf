@@ -28,9 +28,9 @@ end)()
 
 -- Plane Phase Ranges (set these based on your waypoint indices!)
 local PLANE_PHASES = {
-    JUST_SPAWNED  = { start = 1,   stop = 70 },   -- WP1 to WP70
-    ARRIVING      = { start = 71,  stop = 130 },  -- WP71 to WP130
-    LANDING       = { start = 131, stop = 175 },  -- WP131 to WP175
+    JUST_SPAWNED  = { start = 1,   stop = 50 },   -- WP1 to WP70
+    ARRIVING      = { start = 51,  stop = 100 },  -- WP71 to WP130
+    LANDING       = { start = 101, stop = 175 },  -- WP131 to WP175
     TAKEOFF       = { start = 176 },               -- WP176 and above (not logged)
 }
 
