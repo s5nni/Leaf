@@ -37,12 +37,10 @@ local PLANE_INDICES = {
 -- Train Filtering Rules
 local TRAIN_FILTERS = {
     Cargo = {
-        BLOCKED_LOCATIONS = { "Gas", "Jewelry" },
-        BLOCK_DISTANCE    = 700, -- block if location matches AND distance > this
+        BLOCKED_LOCATIONS = { "Gas", "Jewelry" },  -- Block these entirely
     },
     Passenger = {
-        BLOCKED_LOCATIONS = { "Casino", "Bank2" },
-        -- Special: block Casino if distance < 500; block Bank2 always
+        BLOCKED_LOCATIONS = { "Casino", "Bank2" }, -- Block these entirely
     },
 }
 
@@ -652,7 +650,6 @@ local function checkBounties(jobId, loggedSpecials)
     end
 
     if #bountyPlayers > 0 then
-        -- sendBountyEmbed will be called from the embed section
         loggedSpecials.BountyData = bountyPlayers
         loggedSpecials.Bounty = true
         sendLog(LogLevel.SUCCESS, "Bounty Scan", string.format("Found %d player(s) with bounty ≥ $%d.", #bountyPlayers, minBounty))
@@ -666,8 +663,8 @@ end
 -- EMBED FUNCTIONS (Grouped by robbery)
 -- =============================================
 
--- Base embed helper (used by many)
-local function buildBaseEmbed(storeName, status, jobId, extraFields, colorOverride, imageOverride)
+-- Base embed helper (now accepts isOpen boolean)
+local function buildBaseEmbed(storeName, statusText, isOpen, jobId, extraFields, colorOverride, imageOverride)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
     local tc = getTeamCounts()
@@ -682,7 +679,7 @@ local function buildBaseEmbed(storeName, status, jobId, extraFields, colorOverri
     local imageUrl = imageOverride or getgenv().WebhookConfig.Images[storeName]
 
     local fields = {
-        { name = "📍 Status",      value = status,          inline = true },
+        { name = "📍 Status",      value = statusText,      inline = true },
         { name = "👥 Total Players", value = tostring(total), inline = true },
         { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
         { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
@@ -695,8 +692,9 @@ local function buildBaseEmbed(storeName, status, jobId, extraFields, colorOverri
         end
     end
 
+    local color = colorOverride or (isOpen and 3066993 or 15105570)
     local embed = {
-        color = colorOverride or (status == "Open" and 3066993 or 15105570),
+        color = color,
         fields = fields,
         footer = { text = "Leaf Logger " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
@@ -706,9 +704,10 @@ local function buildBaseEmbed(storeName, status, jobId, extraFields, colorOverri
 end
 
 -- Jewelry Store
-local function sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
+local function sendJewelryStoreEmbed(webhookUrl, storeName, isOpen, jobId, timerSeconds)
+    local statusText = isOpen and "Open" or "Under Robbery"
     local extra = timerSeconds and { { name = "⏳ Closes in", value = "<t:" .. (os.time() + timerSeconds) .. ":R>", inline = true } } or nil
-    local embed, roleMention = buildBaseEmbed(storeName, status, jobId, extra)
+    local embed, roleMention = buildBaseEmbed(storeName, statusText, isOpen, jobId, extra)
     local payload = { embeds = { embed } }
     if roleMention then payload.content = roleMention end
     local ok, enc = pcall(function() return game:GetService("HttpService"):JSONEncode(payload) end)
@@ -716,33 +715,33 @@ local function sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timer
 end
 
 -- Power Plant (same as Jewelry)
-local function sendPowerPlantEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
-    sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
+local function sendPowerPlantEmbed(webhookUrl, storeName, isOpen, jobId, timerSeconds)
+    sendJewelryStoreEmbed(webhookUrl, storeName, isOpen, jobId, timerSeconds)
 end
 
 -- Museum
-local function sendMuseumEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
-    sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
+local function sendMuseumEmbed(webhookUrl, storeName, isOpen, jobId, timerSeconds)
+    sendJewelryStoreEmbed(webhookUrl, storeName, isOpen, jobId, timerSeconds)
 end
 
 -- Rising Bank
-local function sendRisingBankEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
-    sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
+local function sendRisingBankEmbed(webhookUrl, storeName, isOpen, jobId, timerSeconds)
+    sendJewelryStoreEmbed(webhookUrl, storeName, isOpen, jobId, timerSeconds)
 end
 
 -- Crater Bank
-local function sendCraterBankEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
-    sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
+local function sendCraterBankEmbed(webhookUrl, storeName, isOpen, jobId, timerSeconds)
+    sendJewelryStoreEmbed(webhookUrl, storeName, isOpen, jobId, timerSeconds)
 end
 
 -- Tomb
-local function sendTombEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
-    sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
+local function sendTombEmbed(webhookUrl, storeName, isOpen, jobId, timerSeconds)
+    sendJewelryStoreEmbed(webhookUrl, storeName, isOpen, jobId, timerSeconds)
 end
 
 -- Bank Truck
-local function sendBankTruckEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
-    sendJewelryStoreEmbed(webhookUrl, storeName, status, jobId, timerSeconds)
+local function sendBankTruckEmbed(webhookUrl, storeName, isOpen, jobId, timerSeconds)
+    sendJewelryStoreEmbed(webhookUrl, storeName, isOpen, jobId, timerSeconds)
 end
 
 -- Mansion (custom)
@@ -781,7 +780,7 @@ local function sendMansionEmbed(webhookUrl, storeName, status, displayStatus, ti
 end
 
 -- Crown Jewel (custom)
-local function sendCrownJewelEmbed(webhookUrl, storeName, status, jobId, code, timerSeconds)
+local function sendCrownJewelEmbed(webhookUrl, storeName, isOpen, jobId, code, timerSeconds)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
     local tc = getTeamCounts()
@@ -790,8 +789,7 @@ local function sendCrownJewelEmbed(webhookUrl, storeName, status, jobId, code, t
     local roleId = getgenv().WebhookConfig.Roles[storeName]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = getgenv().WebhookConfig.Images[storeName]
-    local isOpen = status == "open"
-    local color = isOpen and 3066993 or 15105570
+    local statusText = isOpen and "Open" or "Under Robbery"
     local fields = {
         { name = "👥 Total Players", value = tostring(total), inline = true },
         { name = "🔢 Code",        value = code,             inline = true },
@@ -804,7 +802,7 @@ local function sendCrownJewelEmbed(webhookUrl, storeName, status, jobId, code, t
         table.insert(fields, 1, { name = "⏳ Closes in", value = "<t:" .. (now + timerSeconds) .. ":R>", inline = true })
     end
     local embed = {
-        color = color,
+        color = isOpen and 3066993 or 15105570,
         fields = fields,
         footer = { text = "Leaf Logger " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
@@ -1135,7 +1133,7 @@ local function scanStores(player, jobId, loggedStores)
                             sendLog(LogLevel.INFO, "Crown Jewel Skipped", "Timer too low: " .. timer .. "s")
                             break
                         end
-                        sendCrownJewelEmbed(webhook, storeName, (isOpen and "open" or "robbery"), jobId, code, timer)
+                        sendCrownJewelEmbed(webhook, storeName, isOpen, jobId, code, timer)
                         loggedStores[storeName] = true
                         sendLog(LogLevel.SUCCESS, "Crown Jewel Logged", display .. " " .. (isOpen and "Open" or "Under Robbery") .. " — Code: " .. code, {{ name = "Code", value = code }})
 
@@ -1163,21 +1161,25 @@ local function scanStores(player, jobId, loggedStores)
                                 local locName, dist = getClosestMarkerWithDistance(pos)
                                 local shouldLog = false
                                 if storeName == "Cargo_Train" then
+                                    -- Block if location is in blocked list (Gas, Jewelry)
                                     local blocked = false
                                     for _, b in ipairs(TRAIN_FILTERS.Cargo.BLOCKED_LOCATIONS) do
-                                        if locName == b and dist > TRAIN_FILTERS.Cargo.BLOCK_DISTANCE then
-                                            blocked = true; break
+                                        if locName == b then
+                                            blocked = true
+                                            break
                                         end
                                     end
                                     shouldLog = not blocked
                                 else -- Passenger
-                                    if locName == "Casino" and dist < 500 then
-                                        shouldLog = false
-                                    elseif locName == "Bank2" then
-                                        shouldLog = false
-                                    else
-                                        shouldLog = true
+                                    -- Block if location is in blocked list (Casino, Bank2)
+                                    local blocked = false
+                                    for _, b in ipairs(TRAIN_FILTERS.Passenger.BLOCKED_LOCATIONS) do
+                                        if locName == b then
+                                            blocked = true
+                                            break
+                                        end
                                     end
+                                    shouldLog = not blocked
                                 end
                                 if shouldLog then
                                     if webhook and webhook ~= "" and getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
@@ -1188,7 +1190,7 @@ local function scanStores(player, jobId, loggedStores)
                                         sendLog(LogLevel.INFO, "Train — Toggled Off", display .. " active but disabled.")
                                     end
                                 else
-                                    sendLog(LogLevel.INFO, "Train Not Logged", display .. " at " .. locName .. " (dist " .. dist .. ") filtered.")
+                                    sendLog(LogLevel.INFO, "Train Not Logged", display .. " at " .. locName .. " blocked by filter.")
                                 end
                             else
                                 sendLog(LogLevel.WARNING, "Train Position Not Found", "Could not get position for " .. storeName)
@@ -1202,7 +1204,7 @@ local function scanStores(player, jobId, loggedStores)
                         if loggedStores[storeName] then break end
                         if isRobbery then
                             if webhook and webhook ~= "" and getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
-                                sendBankTruckEmbed(webhook, storeName, "robbery", jobId)
+                                sendBankTruckEmbed(webhook, storeName, isOpen, jobId)
                                 loggedStores[storeName] = true
                                 sendLog(LogLevel.SUCCESS, "Robbery Logged", display .. " under robbery.", {{ name = "Store", value = display }})
                             else
@@ -1228,19 +1230,19 @@ local function scanStores(player, jobId, loggedStores)
                         if isOpen then
                             if webhook and webhook ~= "" and getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
                                 if storeName == "Jewelry_Store" then
-                                    sendJewelryStoreEmbed(webhook, storeName, "open", jobId)
+                                    sendJewelryStoreEmbed(webhook, storeName, true, jobId)
                                 elseif storeName == "Power_Plant" then
-                                    sendPowerPlantEmbed(webhook, storeName, "open", jobId)
+                                    sendPowerPlantEmbed(webhook, storeName, true, jobId)
                                 elseif storeName == "Museum" then
-                                    sendMuseumEmbed(webhook, storeName, "open", jobId)
+                                    sendMuseumEmbed(webhook, storeName, true, jobId)
                                 elseif storeName == "Rising_Bank" then
-                                    sendRisingBankEmbed(webhook, storeName, "open", jobId)
+                                    sendRisingBankEmbed(webhook, storeName, true, jobId)
                                 elseif storeName == "Crater_Bank" then
-                                    sendCraterBankEmbed(webhook, storeName, "open", jobId)
+                                    sendCraterBankEmbed(webhook, storeName, true, jobId)
                                 elseif storeName == "Tomb" then
-                                    sendTombEmbed(webhook, storeName, "open", jobId)
+                                    sendTombEmbed(webhook, storeName, true, jobId)
                                 else
-                                    sendJewelryStoreEmbed(webhook, storeName, "open", jobId)
+                                    sendJewelryStoreEmbed(webhook, storeName, true, jobId)
                                 end
                                 loggedStores[storeName] = true
                                 sendLog(LogLevel.SUCCESS, "Store Open", display .. " open.", {{ name = "Store", value = display }})
@@ -1250,19 +1252,19 @@ local function scanStores(player, jobId, loggedStores)
                         elseif isRobbery then
                             if webhook and webhook ~= "" and getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
                                 if storeName == "Jewelry_Store" then
-                                    sendJewelryStoreEmbed(webhook, storeName, "robbery", jobId)
+                                    sendJewelryStoreEmbed(webhook, storeName, false, jobId)
                                 elseif storeName == "Power_Plant" then
-                                    sendPowerPlantEmbed(webhook, storeName, "robbery", jobId)
+                                    sendPowerPlantEmbed(webhook, storeName, false, jobId)
                                 elseif storeName == "Museum" then
-                                    sendMuseumEmbed(webhook, storeName, "robbery", jobId)
+                                    sendMuseumEmbed(webhook, storeName, false, jobId)
                                 elseif storeName == "Rising_Bank" then
-                                    sendRisingBankEmbed(webhook, storeName, "robbery", jobId)
+                                    sendRisingBankEmbed(webhook, storeName, false, jobId)
                                 elseif storeName == "Crater_Bank" then
-                                    sendCraterBankEmbed(webhook, storeName, "robbery", jobId)
+                                    sendCraterBankEmbed(webhook, storeName, false, jobId)
                                 elseif storeName == "Tomb" then
-                                    sendTombEmbed(webhook, storeName, "robbery", jobId)
+                                    sendTombEmbed(webhook, storeName, false, jobId)
                                 else
-                                    sendJewelryStoreEmbed(webhook, storeName, "robbery", jobId)
+                                    sendJewelryStoreEmbed(webhook, storeName, false, jobId)
                                 end
                                 loggedStores[storeName] = true
                                 sendLog(LogLevel.SUCCESS, "Robbery Logged", display .. " under robbery.", {{ name = "Store", value = display }})
