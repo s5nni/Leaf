@@ -870,23 +870,40 @@ local function sendTrainEmbed(webhookUrl, storeName, locationName, jobId)
 end
 
 -- Oil Rig (custom)
-local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId)
+local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId, isUnderRobbery)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
-    local tc = getTeamCounts()
-    local crim = tc.Criminal; local pol = tc.Police; local pris = tc.Prisoner
-    local crimAndPris = crim + pris; local total = crimAndPris + pol
+    local teamCounts = getTeamCounts()
+    local criminals = teamCounts.Criminal
+    local police = teamCounts.Police
+    local prisoners = teamCounts.Prisoner
+    local crimAndPris = criminals + prisoners
+    local totalPlayers = crimAndPris + police
     local roleId = getgenv().WebhookConfig.Roles["Oil_Rig"]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = getgenv().WebhookConfig.Images["Oil_Rig"]
-    local fields = {
-        { name = "⏳ Closes in",   value = timeRemaining and ("<t:" .. (now + timeRemaining) .. ":R>") or "Not Started", inline = true },
-        { name = "👥 Total Players", value = tostring(total), inline = true },
-        { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
-        { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
-        { name = "🚔 Police",       value = tostring(pol),    inline = true },
-        { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
-    }
+    
+    local fields
+    if isUnderRobbery then
+        fields = {
+            { name = "⏳ Closes in",   value = "<t:" .. (now + timeRemaining) .. ":R>", inline = true },
+            { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
+            { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
+            { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
+            { name = "🚔 Police",       value = tostring(police),    inline = true  },
+            { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
+        }
+    else
+        fields = {
+            { name = "📍 Status",      value = "Open",          inline = true },
+            { name = "👥 Total Players", value = tostring(totalPlayers), inline = true  },
+            { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
+            { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
+            { name = "🚔 Police",       value = tostring(police),    inline = true  },
+            { name = "⏱️ Logged",       value = "<t:" .. now .. ":R>", inline = true },
+        }
+    end
+
     local embed = {
         color = 16753920,
         fields = fields,
@@ -1279,14 +1296,14 @@ local function checkSpecialRobberies(jobId, loggedSpecials)
     -- Oil Rig
     local oilTime = getOilRigTimer()
     if oilTime and oilTime > 60 and not logged.OilRig then
-        local webhook = getgenv().WebhookConfig.Webhooks["Oil_Rig"]
-        if webhook and webhook ~= "" then
-            sendOilRigEmbed(webhook, oilTime, jobId)
-            logged.OilRig = true
-            sendLog(LogLevel.SUCCESS, "Oil Rig Logged", "Oil Rig under robbery.")
-        elseif oilTime and oilTime <= 60 then
-            sendLog(LogLevel.INFO, "Oil Rig Skipped", "Timer too low: " .. oilTime .. "s")
-        end
+        sendOilRigEmbed(webhook, oilTime, jobId, true)  -- Under robbery
+    elseif oilTime and oilTime <= 60 then
+        sendLog(LogLevel.INFO, "Oil Rig Skipped", "Timer too low: " .. oilTime .. "s")
+    elseif not oilTime and not logged.OilRig then
+        -- Oil Rig is open (no timer)
+        sendOilRigEmbed(webhook, nil, jobId, false)
+        logged.OilRig = true
+        sendLog(LogLevel.SUCCESS, "Oil Rig Logged", "Oil Rig is open.")
     end
     -- Bounty
     logged = checkBounties(jobId, logged)
