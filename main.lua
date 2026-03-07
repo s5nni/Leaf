@@ -1,9 +1,3 @@
--- =============================================
--- LEAF ROBLOX ROBBERY LOGGER – ULTRA FAST
--- Author: s5nni
--- Version: Loaded from version.lua
--- =============================================
-
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/webhook.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/whitelist.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/robberies.lua"))()
@@ -13,11 +7,6 @@ if not getgenv()._ServerHopSource then
     getgenv()._ServerHopSource = [[loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/main.lua"))()]]
 end
 
--- =============================================
--- CONFIGURATION SECTION – EDIT THESE VALUES
--- =============================================
-
--- Plane Waypoints (loaded externally)
 local PLANE_WAYPOINTS = (function()
     local success, result = pcall(function()
         return loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/PlaneWaypoints.lua"))()
@@ -30,7 +19,6 @@ local PLANE_WAYPOINTS = (function()
     end
 end)()
 
--- Plane Phase Ranges (set these based on your waypoint indices!)
 local PLANE_PHASES = {
     JUST_SPAWNED  = { start = 1,   stop = 50 },
     ARRIVING      = { start = 51,  stop = 100 },
@@ -38,7 +26,6 @@ local PLANE_PHASES = {
     TAKEOFF       = { start = 176 },
 }
 
--- Train Location Mapper
 local CARGO_LOCATION_MAP = {
     Bank        = { display = "Rising City",       log = true },
     Bank2       = { display = "Just Started",      log = true },
@@ -70,12 +57,8 @@ local PASSENGER_LOCATION_MAP = {
 local DEFAULT_LOCATION = { display = nil, log = true }
 
 local DEFAULT_MIN_BOUNTY = 5000
-local BASE_MAX_PLAYERS = 5          -- starting player limit
-local currentMaxPlayers = BASE_MAX_PLAYERS  -- will be increased on failure
-
--- =============================================
--- CORE CONSTANTS & HELPERS (unchanged)
--- =============================================
+local BASE_MAX_PLAYERS = 5
+local currentMaxPlayers = BASE_MAX_PLAYERS
 
 local AIRDROP_LOCATION_RADIUS = math.huge
 local AIRDROP_COLORS = {
@@ -93,10 +76,6 @@ local LogLevel = {
     ERROR   = { label = "❌ Error",      color = 15158332 },
     HOP     = { label = "🔀 Server Hop", color = 10181046 },
 }
-
--- =============================================
--- FILE SYSTEM (visited servers) – unchanged
--- =============================================
 
 local function getVisitedFilePath()
     local folder = "LeafBot_" .. game.PlaceId
