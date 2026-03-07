@@ -43,10 +43,10 @@ local CARGO_LOCATION_MAP = {
     Gas         = { display = "Closing",           log = false },
     Jewelry     = { display = "Closing",           log = false },
     Mansion     = { display = "Volcano Tunnel",    log = true },
-    Museum      = { display = "Dunes",             log = true },
+    Museum      = { display = "Rising City",             log = true },
     OilRig      = { display = "Just Started",      log = true },
     PowerPlant  = { display = "Closing",           log = false },
-    Tomb        = { display = "Dunes",             log = true },
+    Tomb        = { display = "Military Base",             log = true },
 }
 
 local PASSENGER_LOCATION_MAP = {
@@ -66,7 +66,7 @@ local PASSENGER_LOCATION_MAP = {
 local DEFAULT_LOCATION = { display = nil, log = true }
 
 local DEFAULT_MIN_BOUNTY = 5000
-local MAX_PLAYERS = 5  -- server hop player limit (old value)
+local MAX_PLAYERS = 7  -- server hop player limit (old value)
 
 -- =============================================
 -- CORE CONSTANTS & HELPERS
