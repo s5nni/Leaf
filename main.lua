@@ -1,5 +1,5 @@
 -- =============================================
--- LEAF ROBLOX ROBBERY LOGGER – INFINITE HOP
+-- LEAF ROBLOX ROBBERY LOGGER – SIMPLE SERVERHOP
 -- Author: s5nni
 -- Version: Loaded from version.lua
 -- =============================================
@@ -66,8 +66,7 @@ local PASSENGER_LOCATION_MAP = {
 local DEFAULT_LOCATION = { display = nil, log = true }
 
 local DEFAULT_MIN_BOUNTY = 5000
-local BASE_MAX_PLAYERS = 5
-local currentMaxPlayers = BASE_MAX_PLAYERS
+local MAX_PLAYERS = 5  -- server hop player limit (old value)
 
 -- =============================================
 -- CORE CONSTANTS & HELPERS
@@ -988,7 +987,7 @@ local function sendBountyEmbed(webhookUrl, bountyPlayers, jobId)
 end
 
 -- =============================================
--- SCAN FUNCTIONS (unchanged, but returns hasUnderRobbery)
+-- SCAN FUNCTIONS (unchanged, returns hasUnderRobbery)
 -- =============================================
 local function checkAirdrops(jobId, loggedDrops)
     local webhook = getgenv().WebhookConfig.Webhooks.Airdrop
@@ -1314,7 +1313,7 @@ local function checkSpecialRobberies(jobId, loggedSpecials)
 end
 
 -- =============================================
--- SERVER HOP (parallel + infinite retry)
+-- SIMPLE SERVER HOP (OLD RELIABLE)
 -- =============================================
 
 local function getServerIP(placeId, serverId)
@@ -1364,7 +1363,7 @@ local function getServerRegion(placeId, serverId)
     return region
 end
 
-local function getTargetServer(placeId, currentJobId, playerLimit)
+local function getTargetServer(placeId, currentJobId)
     local servers = {}
     local cursor = nil
     local visited = getgenv().VisitedServers
@@ -1382,7 +1381,7 @@ local function getTargetServer(placeId, currentJobId, playerLimit)
             break
         end
         for _, s in ipairs(res.data) do
-            if s.id ~= currentJobId and not visited[s.id] and (s.playing or 0) < (s.maxPlayers or 0) and (s.playing or 0) <= playerLimit then
+            if s.id ~= currentJobId and not visited[s.id] and (s.playing or 0) < (s.maxPlayers or 0) and (s.playing or 0) <= MAX_PLAYERS then
                 table.insert(servers, s)
             end
         end
@@ -1391,7 +1390,7 @@ local function getTargetServer(placeId, currentJobId, playerLimit)
     until not cursor
 
     if #servers == 0 then
-        sendLog(LogLevel.WARNING, "No Valid Servers", "No servers under limit " .. playerLimit)
+        sendLog(LogLevel.WARNING, "No Valid Servers", "No servers under player limit.")
         return nil
     end
     table.sort(servers, function(a,b) return (a.playing or 0) < (b.playing or 0) end)
@@ -1405,7 +1404,9 @@ local function getTargetServer(placeId, currentJobId, playerLimit)
         task.wait(0.1)
     end
     if #nonUSA == 0 then nonUSA = servers end
-    sendLog(LogLevel.HOP, "Target Server Found", "Best server: " .. nonUSA[1].id .. " (" .. nonUSA[1].playing .. "/" .. nonUSA[1].maxPlayers .. ")")
+    sendLog(LogLevel.HOP, "Target Server Found", "Best server: " .. nonUSA[1].id, {
+        { name = "Players", value = tostring(nonUSA[1].playing) .. "/" .. tostring(nonUSA[1].maxPlayers) }
+    })
     return nonUSA[1].id
 end
 
@@ -1419,21 +1420,45 @@ local function hasS5nniPlayer()
     return false
 end
 
-local function hopToNewServer(player, targetId, oldId)
+local function hopToNewServer(player)
+    if getgenv().TeleportInProgress then
+        sendLog(LogLevel.WARNING, "Teleport Already in Progress", "Skipping duplicate.")
+        return
+    end
+    getgenv().TeleportInProgress = true
+
+    local placeId = game.PlaceId
+    local oldId = game.JobId
+    local visited = loadVisitedServers()
+    visited[oldId] = os.time()
+    saveVisitedServers(visited)
+    getgenv().VisitedServers = visited
+
+    local targetId = getTargetServer(placeId, oldId)
     local tp = game:GetService("TeleportService")
+
     pcall(function() clear_teleport_queue() end)
     if getgenv()._ServerHopSource then
         pcall(function() queue_on_teleport(getgenv()._ServerHopSource) end)
         task.wait(0.1)
     end
-    local success, err = pcall(function()
-        tp:TeleportToPlaceInstance(game.PlaceId, targetId, player)
-    end)
-    if not success then
-        sendLog(LogLevel.ERROR, "Teleport Failed", err)
-        return false, targetId
+
+    if targetId then
+        sendLog(LogLevel.HOP, "Teleporting", "To " .. targetId)
+        local ok, err = pcall(function()
+            tp:TeleportToPlaceInstance(placeId, targetId, player)
+        end)
+        if not ok then
+            sendLog(LogLevel.ERROR, "Teleport Failed", err)
+            getgenv().TeleportInProgress = false
+            pcall(function() tp:Teleport(placeId, player) end)
+        end
+        -- No stuck monitoring; old reliable just teleports
+    else
+        sendLog(LogLevel.WARNING, "No Target Server", "Random teleport.")
+        getgenv().TeleportInProgress = false
+        pcall(function() tp:Teleport(placeId, player) end)
     end
-    return true, targetId
 end
 
 if not getgenv()._ServerHopSource then
@@ -1441,8 +1466,9 @@ if not getgenv()._ServerHopSource then
 end
 
 -- =============================================
--- MAIN EXECUTION (with infinite retry loop)
+-- MAIN EXECUTION (with simple hop)
 -- =============================================
+
 pcall(function()
     local player = waitForLoad()
     local jobId = game.JobId
@@ -1450,12 +1476,7 @@ pcall(function()
 
     if hasS5nniPlayer() then
         sendLog(LogLevel.INFO, "S5nni Player Detected", "Hopping without scanning.")
-        local target = getTargetServer(game.PlaceId, jobId, currentMaxPlayers)
-        if target then
-            hopToNewServer(player, target, jobId)
-        else
-            pcall(function() game:GetService("TeleportService"):Teleport(game.PlaceId, player) end)
-        end
+        hopToNewServer(player)
         return
     end
 
@@ -1464,12 +1485,7 @@ pcall(function()
         local elapsed = os.time() - visited[jobId]
         if elapsed < 300 then
             sendLog(LogLevel.INFO, "Server Recently Visited", string.format("%d seconds ago. Hopping.", elapsed))
-            local target = getTargetServer(game.PlaceId, jobId, currentMaxPlayers)
-            if target then
-                hopToNewServer(player, target, jobId)
-            else
-                pcall(function() game:GetService("TeleportService"):Teleport(game.PlaceId, player) end)
-            end
+            hopToNewServer(player)
             return
         else
             visited[jobId] = nil
@@ -1479,24 +1495,10 @@ pcall(function()
 
     if getgenv().ServerId == jobId then
         sendLog(LogLevel.WARNING, "Duplicate Server", "Hopping immediately.")
-        local target = getTargetServer(game.PlaceId, jobId, currentMaxPlayers)
-        if target then
-            hopToNewServer(player, target, jobId)
-        else
-            pcall(function() game:GetService("TeleportService"):Teleport(game.PlaceId, player) end)
-        end
+        hopToNewServer(player)
         return
     end
     getgenv().ServerId = jobId
-
-    -- Start parallel server selection
-    local targetServer = nil
-    local targetReady = false
-    local targetCoroutine = coroutine.create(function()
-        targetServer = getTargetServer(game.PlaceId, jobId, currentMaxPlayers)
-        targetReady = true
-    end)
-    coroutine.resume(targetCoroutine)
 
     -- Load all markers
     loadAllMarkers()
@@ -1520,69 +1522,7 @@ pcall(function()
         sendLog(LogLevel.INFO, "No under‑robbery", "Hopping immediately.")
     end
 
-    -- Wait for the parallel server selection to finish (if not already)
-    local attempts = 0
-    while not targetReady and attempts < 30 do
-        task.wait(0.5)
-        attempts = attempts + 1
-    end
-
-    -- INFINITE RETRY LOOP
-    local oldId = game.JobId
-    while true do
-        if not targetServer then
-            sendLog(LogLevel.WARNING, "No target server", "Searching again with limit " .. currentMaxPlayers)
-            targetServer = getTargetServer(game.PlaceId, oldId, currentMaxPlayers)
-        end
-        if not targetServer then
-            sendLog(LogLevel.ERROR, "No servers found", "Falling back to random teleport.")
-            pcall(function() game:GetService("TeleportService"):Teleport(game.PlaceId, player) end)
-            return
-        end
-
-        sendLog(LogLevel.HOP, "Attempting teleport", "To server " .. targetServer .. " (limit " .. currentMaxPlayers .. ")")
-        local success, failedServer = hopToNewServer(player, targetServer, oldId)
-        if success then
-            -- Teleport initiated; monitor for stuck
-            task.spawn(function()
-                task.wait(5)
-                if game.JobId == oldId then
-                    sendLog(LogLevel.WARNING, "Teleport stuck", "Server didn't change. Blacklisting and retrying.")
-                    -- Blacklist the failed server
-                    local visited = loadVisitedServers()
-                    visited[targetServer] = os.time()
-                    saveVisitedServers(visited)
-                    getgenv().VisitedServers = visited
-                    -- Increase limit and restart search
-                    currentMaxPlayers = currentMaxPlayers + 1
-                    targetServer = nil
-                    targetReady = false
-                    targetCoroutine = coroutine.create(function()
-                        targetServer = getTargetServer(game.PlaceId, oldId, currentMaxPlayers)
-                        targetReady = true
-                    end)
-                    coroutine.resume(targetCoroutine)
-                    -- Loop will continue in the outer while
-                end
-            end)
-            break  -- exit loop, teleport underway
-        else
-            -- Teleport function itself failed (pcall error)
-            sendLog(LogLevel.WARNING, "Teleport call failed", "Blacklisting server " .. failedServer)
-            local visited = loadVisitedServers()
-            visited[failedServer] = os.time()
-            saveVisitedServers(visited)
-            getgenv().VisitedServers = visited
-            currentMaxPlayers = currentMaxPlayers + 1
-            targetServer = nil
-            targetReady = false
-            targetCoroutine = coroutine.create(function()
-                targetServer = getTargetServer(game.PlaceId, oldId, currentMaxPlayers)
-                targetReady = true
-            end)
-            coroutine.resume(targetCoroutine)
-            task.wait(1)  -- brief pause before next attempt
-            -- loop continues
-        end
-    end
+    getgenv().IsFinished = true
+    sendLog(LogLevel.SUCCESS, "Cycle Complete", "Hopping now.")
+    hopToNewServer(player)
 end)
