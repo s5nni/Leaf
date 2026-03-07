@@ -707,7 +707,7 @@ local function buildBaseEmbed(storeName, statusText, isOpen, jobId, extraFields,
     local embed = {
         color = color,
         fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        footer = { text = "Build: " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
@@ -767,7 +767,7 @@ local function sendMansionEmbed(webhookUrl, storeName, status, displayStatus, ti
     local embed = {
         color = color,
         fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        footer = { text = "Build: " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
@@ -801,7 +801,7 @@ local function sendCrownJewelEmbed(webhookUrl, storeName, isOpen, jobId, code, t
     local embed = {
         color = isOpen and 3066993 or 15105570,
         fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        footer = { text = "Build: " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
@@ -831,7 +831,7 @@ local function sendPlaneEmbed(webhookUrl, status, jobId)
     local embed = {
         color = 3447003,
         fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        footer = { text = "Build: " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
@@ -862,7 +862,7 @@ local function sendTrainEmbed(webhookUrl, storeName, locationName, jobId)
     local embed = {
         color = isCargo and 15105570 or 3066993,
         fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        footer = { text = "Build: " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
@@ -909,7 +909,7 @@ local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId, isUnderRobbery)
     local embed = {
         color = isUnderRobbery and 16753920 or 3066993,
         fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        footer = { text = "Build: " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
@@ -944,7 +944,7 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
     local embed = {
         color = colorDef.embedColor,
         fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        footer = { text = "Build: " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
@@ -982,7 +982,7 @@ local function sendBountyEmbed(webhookUrl, bountyPlayers, jobId)
     local embed = {
         color = 16766720,
         fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        footer = { text = "Build: " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if thumb then
@@ -1587,3 +1587,4 @@ pcall(function()
         end
     end
 end)
+
