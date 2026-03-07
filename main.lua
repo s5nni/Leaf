@@ -9,6 +9,10 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/robberies.lua"))()
 local BOT_VERSION = loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/version.lua"))()
 
+if not getgenv()._ServerHopSource then
+    getgenv()._ServerHopSource = [[loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/main.lua"))()]]
+end
+
 -- =============================================
 -- CONFIGURATION SECTION – EDIT THESE VALUES
 -- =============================================
@@ -1447,8 +1451,12 @@ end
 local function hopToNewServer(player, targetId, oldId)
     local tp = game:GetService("TeleportService")
     pcall(function() clear_teleport_queue() end)
-    pcall(function() queue_on_teleport(getgenv()._ServerHopSource) end)
-    task.wait(0.1)
+
+    -- Queue the main script using a string (correct syntax)
+    if getgenv()._ServerHopSource then
+        pcall(function() queue_on_teleport(getgenv()._ServerHopSource) end)
+        task.wait(0.1)  -- small delay to ensure it's registered
+    end
 
     local success, err = pcall(function()
         tp:TeleportToPlaceInstance(game.PlaceId, targetId, player)
@@ -1535,8 +1543,8 @@ pcall(function()
     -- POST‑SCAN: DECIDE TO WAIT OR HOP IMMEDIATELY
     -- =============================================
     if hasUnderRobbery then
-        sendLog(LogLevel.INFO, "Under‑robbery detected", "Waiting 15 seconds for new robberies...")
-        task.wait(15)
+        sendLog(LogLevel.INFO, "Under‑robbery detected", "Waiting 30 seconds for new robberies...")
+        task.wait(30)
         sendLog(LogLevel.INFO, "Second Pass Started", "Scanning for new robberies...")
         loggedStores, _ = scanStores(player, jobId, loggedStores)
         loggedDrops = checkAirdrops(jobId, loggedDrops)
