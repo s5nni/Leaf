@@ -1455,14 +1455,9 @@ local function hopToNewServer(player, targetId, oldId)
     end)
     if not success then
         sendLog(LogLevel.ERROR, "Teleport Failed", err)
-        -- Mark the failed server as visited immediately
-        local visited = loadVisitedServers()
-        visited[targetId] = os.time()
-        saveVisitedServers(visited)
-        getgenv().VisitedServers = visited
-        return false
+        return false, targetId
     end
-    return true
+    return true, targetId
 end
 
 -- =============================================
@@ -1543,7 +1538,7 @@ pcall(function()
         sendLog(LogLevel.INFO, "Under‑robbery detected", "Waiting 30 seconds for new robberies...")
         task.wait(30)
         sendLog(LogLevel.INFO, "Second Pass Started", "Scanning for new robberies...")
-        loggedStores, _ = scanStores(player, jobId, loggedStores)  -- ignore hasUnderRobbery this time
+        loggedStores, _ = scanStores(player, jobId, loggedStores)
         loggedDrops = checkAirdrops(jobId, loggedDrops)
         loggedSpecials = checkSpecialRobberies(jobId, loggedSpecials)
     else
@@ -1557,9 +1552,9 @@ pcall(function()
         attempts = attempts + 1
     end
 
-    -- Retry loop: try to hop, if stuck or fails, increase limit and try again
+    -- Retry loop: try to hop, if fails, blacklist server, increase limit, and try again
     local oldId = game.JobId
-    local maxRetries = 5
+    local maxRetries = 10  -- increased to give more chances
     for retry = 1, maxRetries do
         if not targetServer then
             sendLog(LogLevel.WARNING, "No target server", "Searching again with limit " .. currentMaxPlayers)
@@ -1572,39 +1567,43 @@ pcall(function()
         end
 
         sendLog(LogLevel.HOP, "Attempting teleport", "To server " .. targetServer .. " (limit " .. currentMaxPlayers .. ")")
-        local success = hopToNewServer(player, targetServer, oldId)
+        local success, failedServer = hopToNewServer(player, targetServer, oldId)
         if success then
-            -- Monitor for stuck teleport (still same server after 5 seconds)
+            -- Teleport initiated successfully; monitor for stuck
             task.spawn(function()
                 task.wait(5)
                 if game.JobId == oldId then
-                    sendLog(LogLevel.WARNING, "Teleport stuck", "Server didn't change. Retrying with higher limit.")
-                    -- Mark this server as visited
+                    sendLog(LogLevel.WARNING, "Teleport stuck", "Server didn't change. Blacklisting and retrying.")
+                    -- Blacklist this server
                     local visited = loadVisitedServers()
                     visited[targetServer] = os.time()
                     saveVisitedServers(visited)
                     getgenv().VisitedServers = visited
-                    -- Increase limit and retry (will happen in the next iteration)
+                    -- Increase limit and restart search
                     currentMaxPlayers = currentMaxPlayers + 1
-                    targetServer = nil  -- force new search
+                    targetServer = nil
                     targetReady = false
-                    -- Restart server search coroutine
                     targetCoroutine = coroutine.create(function()
                         targetServer = getTargetServer(game.PlaceId, oldId, currentMaxPlayers)
                         targetReady = true
                     end)
                     coroutine.resume(targetCoroutine)
-                else
-                    -- Successfully left, nothing to do
+                    -- Note: we don't break; we'll let the loop continue with the next iteration
                 end
             end)
-            break  -- exit retry loop, teleport initiated
+            break  -- exit retry loop after successful teleport (monitor runs in background)
         else
             -- Teleport function itself failed (pcall error)
+            sendLog(LogLevel.WARNING, "Teleport call failed", "Blacklisting server " .. failedServer)
+            -- Blacklist the failed server
+            local visited = loadVisitedServers()
+            visited[failedServer] = os.time()
+            saveVisitedServers(visited)
+            getgenv().VisitedServers = visited
+            -- Increase limit and restart search
             currentMaxPlayers = currentMaxPlayers + 1
             targetServer = nil
             targetReady = false
-            -- Restart server search
             targetCoroutine = coroutine.create(function()
                 targetServer = getTargetServer(game.PlaceId, oldId, currentMaxPlayers)
                 targetReady = true
