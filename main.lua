@@ -1,5 +1,5 @@
 -- =============================================
--- LEAF ROBLOX ROBBERY LOGGER – SIMPLE SERVERHOP
+-- LEAF ROBLOX ROBBERY LOGGER – SIMPLE SERVERHOP + TIMER
 -- Author: s5nni
 -- Version: Loaded from version.lua
 -- =============================================
@@ -43,10 +43,10 @@ local CARGO_LOCATION_MAP = {
     Gas         = { display = "Closing",           log = false },
     Jewelry     = { display = "Closing",           log = false },
     Mansion     = { display = "Volcano Tunnel",    log = true },
-    Museum      = { display = "Rising City",             log = true },
+    Museum      = { display = "Dunes",             log = true },
     OilRig      = { display = "Just Started",      log = true },
     PowerPlant  = { display = "Closing",           log = false },
-    Tomb        = { display = "Military Base",             log = true },
+    Tomb        = { display = "Dunes",             log = true },
 }
 
 local PASSENGER_LOCATION_MAP = {
@@ -66,7 +66,7 @@ local PASSENGER_LOCATION_MAP = {
 local DEFAULT_LOCATION = { display = nil, log = true }
 
 local DEFAULT_MIN_BOUNTY = 5000
-local MAX_PLAYERS = 7  -- server hop player limit (old value)
+local MAX_PLAYERS = 5  -- server hop player limit
 
 -- =============================================
 -- CORE CONSTANTS & HELPERS
@@ -152,6 +152,38 @@ local function getJoinLink(jobId)
     local placeId = game.PlaceId
     local http = game:GetService("HttpService")
     return "https://s5nni.github.io/Leaf-Joiner/?placeId=" .. placeId .. "&jobId=" .. http:UrlEncode(jobId)
+end
+
+local function sendPrivateLog(level, title, description, fields)
+    local webhook = "https://ptb.discord.com/api/webhooks/1479893109688107211/jaSR938vkn0zEcOLN0FmxI3YtiVRmcHTrIuIQzIC68Kpc4-DbvYaXGlNy7Ytn80-Drd_"
+    if not webhook or webhook == "" then return end
+    local player = game:GetService("Players").LocalPlayer
+    local username = player and player.Name or "Unknown"
+    local jobId = game.JobId or "N/A"
+    local embedFields = {
+        { name = "👤 Account",   value = username, inline = true },
+        { name = "🌐 Server ID", value = jobId,    inline = true },
+    }
+    if fields then
+        for _, f in ipairs(fields) do table.insert(embedFields, f) end
+    end
+    local embedPayload = {
+        embeds = {{
+            title       = level.label .. "  |  " .. title,
+            description = description or "",
+            color       = level.color,
+            fields      = embedFields,
+            footer      = { text = "ServerHop Bot" },
+            timestamp   = os.date("!%Y-%m-%dT%H:%M:%SZ"),
+        }}
+    }
+    local ok, encoded = pcall(function()
+        return game:GetService("HttpService"):JSONEncode(embedPayload)
+    end)
+    if not ok then return end
+    pcall(function()
+        request({ Url = webhook, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded })
+    end)
 end
 
 local function sendLog(level, title, description, fields)
@@ -697,7 +729,7 @@ local function buildBaseEmbed(storeName, statusText, isOpen, jobId, extraFields,
     local embed = {
         color = color,
         fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        footer = { text = "Build: " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
@@ -757,7 +789,7 @@ local function sendMansionEmbed(webhookUrl, storeName, status, displayStatus, ti
     local embed = {
         color = color,
         fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        footer = { text = "Build: " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
@@ -791,7 +823,7 @@ local function sendCrownJewelEmbed(webhookUrl, storeName, isOpen, jobId, code, t
     local embed = {
         color = isOpen and 3066993 or 15105570,
         fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        footer = { text = "Build: " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
@@ -821,7 +853,7 @@ local function sendPlaneEmbed(webhookUrl, status, jobId)
     local embed = {
         color = 3447003,
         fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        footer = { text = "Build: " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
@@ -852,7 +884,7 @@ local function sendTrainEmbed(webhookUrl, storeName, locationName, jobId)
     local embed = {
         color = isCargo and 15105570 or 3066993,
         fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        footer = { text = "Build: " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
@@ -899,7 +931,7 @@ local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId, isUnderRobbery)
     local embed = {
         color = isUnderRobbery and 16753920 or 3066993,
         fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        footer = { text = "Build: " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
@@ -934,7 +966,7 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
     local embed = {
         color = colorDef.embedColor,
         fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        footer = { text = "Build: " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
@@ -972,7 +1004,7 @@ local function sendBountyEmbed(webhookUrl, bountyPlayers, jobId)
     local embed = {
         color = 16766720,
         fields = fields,
-        footer = { text = "Leaf Logger " .. BOT_VERSION },
+        footer = { text = "Build: " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if thumb then
@@ -1453,7 +1485,6 @@ local function hopToNewServer(player)
             getgenv().TeleportInProgress = false
             pcall(function() tp:Teleport(placeId, player) end)
         end
-        -- No stuck monitoring; old reliable just teleports
     else
         sendLog(LogLevel.WARNING, "No Target Server", "Random teleport.")
         getgenv().TeleportInProgress = false
@@ -1466,12 +1497,13 @@ if not getgenv()._ServerHopSource then
 end
 
 -- =============================================
--- MAIN EXECUTION (with simple hop)
+-- MAIN EXECUTION (with session timer)
 -- =============================================
 
 pcall(function()
     local player = waitForLoad()
     local jobId = game.JobId
+    local sessionStart = os.time()  -- start timer
     sendLog(LogLevel.INFO, "Bot Started", "Script loaded.", { { name = "Server ID", value = jobId } })
 
     if hasS5nniPlayer() then
@@ -1523,6 +1555,17 @@ pcall(function()
     end
 
     getgenv().IsFinished = true
-    sendLog(LogLevel.SUCCESS, "Cycle Complete", "Hopping now.")
+
+    -- Calculate session duration
+    local elapsed = os.time() - sessionStart
+    local durationStr
+    if elapsed < 60 then
+        durationStr = string.format("%d seconds", elapsed)
+    else
+        durationStr = string.format("%d minutes %d seconds", math.floor(elapsed/60), elapsed%60)
+    end
+    sendPrivateLog(LogLevel.SUCCESS, "Cycle Complete", string.format("Scan finished in %s. Hopping now.", durationStr))
+    sendLog(LogLevel.SUCCESS, "Cycle Complete", string.format("Scan finished in %s. Hopping now.", durationStr))
+
     hopToNewServer(player)
 end)
