@@ -1535,8 +1535,8 @@ pcall(function()
     -- POST‑SCAN: DECIDE TO WAIT OR HOP IMMEDIATELY
     -- =============================================
     if hasUnderRobbery then
-        sendLog(LogLevel.INFO, "Under‑robbery detected", "Waiting 30 seconds for new robberies...")
-        task.wait(30)
+        sendLog(LogLevel.INFO, "Under‑robbery detected", "Waiting 15 seconds for new robberies...")
+        task.wait(15)
         sendLog(LogLevel.INFO, "Second Pass Started", "Scanning for new robberies...")
         loggedStores, _ = scanStores(player, jobId, loggedStores)
         loggedDrops = checkAirdrops(jobId, loggedDrops)
