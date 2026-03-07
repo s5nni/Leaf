@@ -1,12 +1,19 @@
+-- =============================================
+-- LEAF ROBLOX ROBBERY LOGGER – INFINITE HOP
+-- Author: s5nni
+-- Version: Loaded from version.lua
+-- =============================================
+
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/webhook.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/whitelist.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/robberies.lua"))()
 local BOT_VERSION = loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/version.lua"))()
 
-if not getgenv()._ServerHopSource then
-    getgenv()._ServerHopSource = [[loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/main.lua"))()]]
-end
+-- =============================================
+-- CONFIGURATION SECTION – EDIT THESE VALUES
+-- =============================================
 
+-- Plane Waypoints (loaded externally)
 local PLANE_WAYPOINTS = (function()
     local success, result = pcall(function()
         return loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/PlaneWaypoints.lua"))()
@@ -19,6 +26,7 @@ local PLANE_WAYPOINTS = (function()
     end
 end)()
 
+-- Plane Phase Ranges (set these based on your waypoint indices!)
 local PLANE_PHASES = {
     JUST_SPAWNED  = { start = 1,   stop = 50 },
     ARRIVING      = { start = 51,  stop = 100 },
@@ -26,6 +34,7 @@ local PLANE_PHASES = {
     TAKEOFF       = { start = 176 },
 }
 
+-- Train Location Mapper
 local CARGO_LOCATION_MAP = {
     Bank        = { display = "Rising City",       log = true },
     Bank2       = { display = "Just Started",      log = true },
@@ -60,6 +69,10 @@ local DEFAULT_MIN_BOUNTY = 5000
 local BASE_MAX_PLAYERS = 5
 local currentMaxPlayers = BASE_MAX_PLAYERS
 
+-- =============================================
+-- CORE CONSTANTS & HELPERS
+-- =============================================
+
 local AIRDROP_LOCATION_RADIUS = math.huge
 local AIRDROP_COLORS = {
     { r = 147, g = 44,  b = 53,  label = "🔴 Red",   embedColor = 15158332 },
@@ -76,6 +89,10 @@ local LogLevel = {
     ERROR   = { label = "❌ Error",      color = 15158332 },
     HOP     = { label = "🔀 Server Hop", color = 10181046 },
 }
+
+-- =============================================
+-- FILE SYSTEM (visited servers)
+-- =============================================
 
 local function getVisitedFilePath()
     local folder = "LeafBot_" .. game.PlaceId
@@ -129,7 +146,7 @@ if getgenv().WhitelistCheck and not getgenv().WhitelistCheck() then
 end
 
 -- =============================================
--- UTILITY FUNCTIONS (unchanged)
+-- UTILITY FUNCTIONS
 -- =============================================
 
 local function getJoinLink(jobId)
@@ -202,7 +219,7 @@ local function getTeamCounts()
 end
 
 -- =============================================
--- AREA LOADING (stream all markers)
+-- AREA LOADING
 -- =============================================
 
 local function loadAllMarkers()
@@ -216,7 +233,6 @@ local function loadAllMarkers()
     for _, child in ipairs(markers:GetChildren()) do
         if child:IsA("BasePart") then
             player:RequestStreamAroundAsync(child.Position)
-            -- No delay – fire all requests immediately
         end
     end
     sendLog(LogLevel.INFO, "Area Load", "All marker streaming requested.")
@@ -225,7 +241,6 @@ end
 -- =============================================
 -- AIRDROP DETECTION (unchanged)
 -- =============================================
-
 local function colorDistance(r1,g1,b1,r2,g2,b2)
     return math.sqrt((r1-r2)^2 + (g1-g2)^2 + (b1-b2)^2)
 end
@@ -267,7 +282,6 @@ end
 -- =============================================
 -- CROWN JEWEL HELPERS (unchanged)
 -- =============================================
-
 local POSITION_THRESHOLD = 5
 local knownLocations = {
     {cframe = CFrame.new(-177.696777, 20.1733818, -4682.39795, 0.275480151, -0, -0.96130687, 0, 1, -0, 0.96130687, 0, 0.275480151), axis = "Z"},
@@ -369,7 +383,6 @@ end
 -- =============================================
 -- PLANE DETECTION (unchanged)
 -- =============================================
-
 local function getPlanePart()
     local plane = workspace:FindFirstChild("Plane")
     if not plane then return nil end
@@ -415,7 +428,6 @@ end
 -- =============================================
 -- TRAIN DETECTION (unchanged)
 -- =============================================
-
 local function getClosestMarkerWithDistance(pos)
     local markers = workspace:FindFirstChild("RobberyMarkers")
     if not markers then return "Unknown", math.huge end
@@ -454,7 +466,6 @@ end
 -- =============================================
 -- OIL RIG TIMER & STATUS (unchanged)
 -- =============================================
-
 local function getOilRigTimer()
     local oilRig = workspace:FindFirstChild("OilRig")
     if not oilRig then return nil end
@@ -508,7 +519,6 @@ end
 -- =============================================
 -- MANSION TIME HELPERS (unchanged)
 -- =============================================
-
 local function getGameTimeText()
     local s, lbl = pcall(function()
         return game:GetService("Players").LocalPlayer.PlayerGui.AppUI.Buttons.Minimap.Time.Time
@@ -548,7 +558,6 @@ end
 -- =============================================
 -- BOUNTY DETECTION (unchanged)
 -- =============================================
-
 local function checkBounties(jobId, loggedSpecials)
     if loggedSpecials.Bounty then return loggedSpecials end
     if getgenv().RobberyToggles and not getgenv().RobberyToggles.Bounty then return loggedSpecials end
@@ -657,7 +666,6 @@ end
 -- =============================================
 -- EMBED FUNCTIONS (unchanged)
 -- =============================================
-
 local function buildBaseEmbed(storeName, statusText, isOpen, jobId, extraFields, colorOverride, imageOverride)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
@@ -690,7 +698,7 @@ local function buildBaseEmbed(storeName, statusText, isOpen, jobId, extraFields,
     local embed = {
         color = color,
         fields = fields,
-        footer = { text = "Build: " .. BOT_VERSION },
+        footer = { text = "Leaf Logger " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
@@ -750,7 +758,7 @@ local function sendMansionEmbed(webhookUrl, storeName, status, displayStatus, ti
     local embed = {
         color = color,
         fields = fields,
-        footer = { text = "Build: " .. BOT_VERSION },
+        footer = { text = "Leaf Logger " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
@@ -784,7 +792,7 @@ local function sendCrownJewelEmbed(webhookUrl, storeName, isOpen, jobId, code, t
     local embed = {
         color = isOpen and 3066993 or 15105570,
         fields = fields,
-        footer = { text = "Build: " .. BOT_VERSION },
+        footer = { text = "Leaf Logger " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
@@ -814,7 +822,7 @@ local function sendPlaneEmbed(webhookUrl, status, jobId)
     local embed = {
         color = 3447003,
         fields = fields,
-        footer = { text = "Build: " .. BOT_VERSION },
+        footer = { text = "Leaf Logger " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
@@ -845,7 +853,7 @@ local function sendTrainEmbed(webhookUrl, storeName, locationName, jobId)
     local embed = {
         color = isCargo and 15105570 or 3066993,
         fields = fields,
-        footer = { text = "Build: " .. BOT_VERSION },
+        footer = { text = "Leaf Logger " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
@@ -892,7 +900,7 @@ local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId, isUnderRobbery)
     local embed = {
         color = isUnderRobbery and 16753920 or 3066993,
         fields = fields,
-        footer = { text = "Build: " .. BOT_VERSION },
+        footer = { text = "Leaf Logger " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
@@ -927,7 +935,7 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
     local embed = {
         color = colorDef.embedColor,
         fields = fields,
-        footer = { text = "Build: " .. BOT_VERSION },
+        footer = { text = "Leaf Logger " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if imageUrl then embed.image = { url = imageUrl } end
@@ -965,7 +973,7 @@ local function sendBountyEmbed(webhookUrl, bountyPlayers, jobId)
     local embed = {
         color = 16766720,
         fields = fields,
-        footer = { text = "Build: " .. BOT_VERSION },
+        footer = { text = "Leaf Logger " .. BOT_VERSION },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
     }
     if thumb then
@@ -980,9 +988,8 @@ local function sendBountyEmbed(webhookUrl, bountyPlayers, jobId)
 end
 
 -- =============================================
--- SCAN FUNCTIONS (modified to return if any under‑robbery found)
+-- SCAN FUNCTIONS (unchanged, but returns hasUnderRobbery)
 -- =============================================
-
 local function checkAirdrops(jobId, loggedDrops)
     local webhook = getgenv().WebhookConfig.Webhooks.Airdrop
     if not webhook or webhook == "" then
@@ -1070,7 +1077,6 @@ local function checkAirdrops(jobId, loggedDrops)
     return loggedDrops
 end
 
--- Returns (loggedStores, hasUnderRobbery)
 local function scanStores(player, jobId, loggedStores)
     local pg = player and player:FindFirstChild("PlayerGui")
     if not pg then
@@ -1104,10 +1110,9 @@ local function scanStores(player, jobId, loggedStores)
                     elseif isClosed then closedCount = closedCount + 1
                     else
                         robberyCount = robberyCount + 1
-                        hasUnderRobbery = true   -- any under‑robbery triggers wait
+                        hasUnderRobbery = true
                     end
 
-                    -- ========== CROWN JEWEL ==========
                     if storeName == "Crown_Jewel" then
                         if getgenv().RobberyToggles and not getgenv().RobberyToggles[storeName] then break end
                         if not (isOpen or isRobbery) then break end
@@ -1130,7 +1135,6 @@ local function scanStores(player, jobId, loggedStores)
                         loggedStores[storeName] = true
                         sendLog(LogLevel.SUCCESS, "Crown Jewel Logged", display .. " " .. (isOpen and "Open" or "Under Robbery") .. " — Code: " .. code, {{ name = "Code", value = code }})
 
-                    -- ========== MANSION ==========
                     elseif storeName == "Mansion" then
                         if getgenv().RobberyToggles and not getgenv().RobberyToggles.Mansion then break end
                         if loggedStores[storeName] then break end
@@ -1145,7 +1149,6 @@ local function scanStores(player, jobId, loggedStores)
                         loggedStores[storeName] = true
                         sendLog(LogLevel.SUCCESS, "Mansion Logged", "Mansion " .. displayStatus .. " at " .. timeText, {{ name = "Status", value = displayStatus }})
 
-                    -- ========== TRAINS ==========
                     elseif storeName == "Cargo_Train" or storeName == "Passenger_Train" then
                         if loggedStores[storeName] then break end
                         local pos = getTrainPosition(storeName)
@@ -1172,7 +1175,6 @@ local function scanStores(player, jobId, loggedStores)
                             sendLog(LogLevel.WARNING, "Train Position Not Found", "Could not get position for " .. storeName)
                         end
 
-                    -- ========== BANK TRUCK ==========
                     elseif storeName == "Bank_Truck" then
                         if loggedStores[storeName] then break end
                         if isOpen then
@@ -1185,20 +1187,15 @@ local function scanStores(player, jobId, loggedStores)
                             end
                         end
 
-                    -- ========== OIL RIG ==========
                     elseif storeName == "Oil_Rig" then
                         -- handled in special robberies
-                        -- but we still mark hasUnderRobbery based on isRobbery above
 
-                    -- ========== CARGO PLANE ==========
                     elseif storeName == "Cargo_Plane" then
                         -- handled in special robberies
 
-                    -- ========== BOUNTY ==========
                     elseif storeName == "Bounty" then
                         -- handled in special robberies
 
-                    -- ========== ALL OTHER STORES ==========
                     else
                         if loggedStores[storeName] then break end
                         if isOpen then
@@ -1265,10 +1262,6 @@ local function scanStores(player, jobId, loggedStores)
     return loggedStores, hasUnderRobbery
 end
 
--- =============================================
--- SPECIAL ROBBERIES (Plane, Oil Rig, Bounty)
--- =============================================
-
 local function checkSpecialRobberies(jobId, loggedSpecials)
     local logged = loggedSpecials or {}
     -- Plane
@@ -1321,7 +1314,7 @@ local function checkSpecialRobberies(jobId, loggedSpecials)
 end
 
 -- =============================================
--- SERVER HOP (parallel selection + adaptive limit)
+-- SERVER HOP (parallel + infinite retry)
 -- =============================================
 
 local function getServerIP(placeId, serverId)
@@ -1371,7 +1364,6 @@ local function getServerRegion(placeId, serverId)
     return region
 end
 
--- Modified to accept a dynamic player limit
 local function getTargetServer(placeId, currentJobId, playerLimit)
     local servers = {}
     local cursor = nil
@@ -1430,13 +1422,10 @@ end
 local function hopToNewServer(player, targetId, oldId)
     local tp = game:GetService("TeleportService")
     pcall(function() clear_teleport_queue() end)
-
-    -- Queue the main script using a string (correct syntax)
     if getgenv()._ServerHopSource then
         pcall(function() queue_on_teleport(getgenv()._ServerHopSource) end)
-        task.wait(0.1)  -- small delay to ensure it's registered
+        task.wait(0.1)
     end
-
     local success, err = pcall(function()
         tp:TeleportToPlaceInstance(game.PlaceId, targetId, player)
     end)
@@ -1447,10 +1436,13 @@ local function hopToNewServer(player, targetId, oldId)
     return true, targetId
 end
 
--- =============================================
--- MAIN EXECUTION
--- =============================================
+if not getgenv()._ServerHopSource then
+    getgenv()._ServerHopSource = [[loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/main.lua"))()]]
+end
 
+-- =============================================
+-- MAIN EXECUTION (with infinite retry loop)
+-- =============================================
 pcall(function()
     local player = waitForLoad()
     local jobId = game.JobId
@@ -1458,7 +1450,6 @@ pcall(function()
 
     if hasS5nniPlayer() then
         sendLog(LogLevel.INFO, "S5nni Player Detected", "Hopping without scanning.")
-        -- Use current limit to find a server
         local target = getTargetServer(game.PlaceId, jobId, currentMaxPlayers)
         if target then
             hopToNewServer(player, target, jobId)
@@ -1507,7 +1498,7 @@ pcall(function()
     end)
     coroutine.resume(targetCoroutine)
 
-    -- Load all markers immediately (no delays)
+    -- Load all markers
     loadAllMarkers()
 
     -- First scan
@@ -1518,9 +1509,6 @@ pcall(function()
     loggedDrops = checkAirdrops(jobId, loggedDrops)
     loggedSpecials = checkSpecialRobberies(jobId, loggedSpecials)
 
-        -- =============================================
-    -- POST‑SCAN: DECIDE TO WAIT OR HOP IMMEDIATELY
-    -- =============================================
     if hasUnderRobbery then
         sendLog(LogLevel.INFO, "Under‑robbery detected", "Waiting 30 seconds for new robberies...")
         task.wait(30)
@@ -1539,10 +1527,9 @@ pcall(function()
         attempts = attempts + 1
     end
 
-    -- Retry loop: try to hop, if fails, blacklist server, increase limit, and try again
+    -- INFINITE RETRY LOOP
     local oldId = game.JobId
-    local maxRetries = 10  -- increased to give more chances
-    for retry = 1, maxRetries do
+    while true do
         if not targetServer then
             sendLog(LogLevel.WARNING, "No target server", "Searching again with limit " .. currentMaxPlayers)
             targetServer = getTargetServer(game.PlaceId, oldId, currentMaxPlayers)
@@ -1556,12 +1543,12 @@ pcall(function()
         sendLog(LogLevel.HOP, "Attempting teleport", "To server " .. targetServer .. " (limit " .. currentMaxPlayers .. ")")
         local success, failedServer = hopToNewServer(player, targetServer, oldId)
         if success then
-            -- Teleport initiated successfully; monitor for stuck
+            -- Teleport initiated; monitor for stuck
             task.spawn(function()
                 task.wait(5)
                 if game.JobId == oldId then
                     sendLog(LogLevel.WARNING, "Teleport stuck", "Server didn't change. Blacklisting and retrying.")
-                    -- Blacklist this server
+                    -- Blacklist the failed server
                     local visited = loadVisitedServers()
                     visited[targetServer] = os.time()
                     saveVisitedServers(visited)
@@ -1575,19 +1562,17 @@ pcall(function()
                         targetReady = true
                     end)
                     coroutine.resume(targetCoroutine)
-                    -- Note: we don't break; we'll let the loop continue with the next iteration
+                    -- Loop will continue in the outer while
                 end
             end)
-            break  -- exit retry loop after successful teleport (monitor runs in background)
+            break  -- exit loop, teleport underway
         else
             -- Teleport function itself failed (pcall error)
             sendLog(LogLevel.WARNING, "Teleport call failed", "Blacklisting server " .. failedServer)
-            -- Blacklist the failed server
             local visited = loadVisitedServers()
             visited[failedServer] = os.time()
             saveVisitedServers(visited)
             getgenv().VisitedServers = visited
-            -- Increase limit and restart search
             currentMaxPlayers = currentMaxPlayers + 1
             targetServer = nil
             targetReady = false
@@ -1596,7 +1581,8 @@ pcall(function()
                 targetReady = true
             end)
             coroutine.resume(targetCoroutine)
-            task.wait(1)  -- brief pause before retry
+            task.wait(1)  -- brief pause before next attempt
+            -- loop continues
         end
     end
 end)
