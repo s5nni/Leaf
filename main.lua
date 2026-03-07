@@ -29,9 +29,9 @@ end)()
 -- Plane Phase Ranges (set these based on your waypoint indices!)
 local PLANE_PHASES = {
     JUST_SPAWNED  = { start = 1,   stop = 50 },
-    ARRIVING      = { start = 51,  stop = 100 },
-    LANDING       = { start = 101, stop = 175 },
-    TAKEOFF       = { start = 176 },
+    ARRIVING      = { start = 51,  stop = 70 },
+    LANDING       = { start = 71, stop = 160 },
+    TAKEOFF       = { start = 161 },
 }
 
 -- Train Location Mapper
