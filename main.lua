@@ -1476,14 +1476,37 @@ local function hopToNewServer(player)
     end
 
     if targetId then
+        -- Set up a one‑time handler for teleport initiation failures
+        local failConnection
+        failConnection = tp.TeleportInitFailed:Connect(function(plr, result, message)
+            if plr == player then
+                sendLog(LogLevel.WARNING, "Teleport Init Failed", message)
+                -- Blacklist the failed server
+                local newVisited = loadVisitedServers()
+                newVisited[targetId] = os.time()
+                saveVisitedServers(newVisited)
+                getgenv().VisitedServers = newVisited
+                -- Fall back to a random server
+                sendLog(LogLevel.HOP, "Falling back to random teleport")
+                pcall(function() tp:Teleport(placeId, player) end)
+                failConnection:Disconnect()
+                getgenv().TeleportInProgress = false
+            end
+        end)
+
         sendLog(LogLevel.HOP, "Teleporting", "To " .. targetId)
         local ok, err = pcall(function()
             tp:TeleportToPlaceInstance(placeId, targetId, player)
         end)
         if not ok then
             sendLog(LogLevel.ERROR, "Teleport Failed", err)
+            failConnection:Disconnect()
             getgenv().TeleportInProgress = false
             pcall(function() tp:Teleport(placeId, player) end)
+        else
+            -- Teleport call succeeded; the event will handle any later failure
+            task.wait(1)
+            failConnection:Disconnect() -- disconnect after a short time to avoid memory leaks
         end
     else
         sendLog(LogLevel.WARNING, "No Target Server", "Random teleport.")
