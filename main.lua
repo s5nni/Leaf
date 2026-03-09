@@ -263,13 +263,9 @@ local function loadAllMarkers()
     end
     for _, child in ipairs(markers:GetChildren()) do
         if child:IsA("BasePart") then
-            player:RequestStreamAroundAsync(child.Position)
-
-            if child.Name == "Casino" then
-                for i = 1,10 do
-                    player:RequestStreamAroundAsync(child.Position)
-                    wait(0.1)
-                end
+            for i = 1,10 do
+                 player:RequestStreamAroundAsync(child.Position)
+                 wait(0.1)
             end
         end
     end
