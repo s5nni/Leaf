@@ -962,7 +962,7 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
         { name = "📍 Location",    value = locationName,         inline = true },
         { name = "👥 Total Players", value = tostring(total),    inline = true },
         { name = "🔗 Join Server", value = "[Click to Join](" .. joinLink .. ")", inline = false },
-        { name = "🏃 Criminals",   value = tostring(crimAndPris), inline = false },
+        { name = "🏃 Criminals",   value = tostring(crimAndPris), inline = true },
         { name = "🚔 Police",      value = tostring(pol),        inline = true },
         { name = "⏱️ Logged",      value = "<t:" .. now .. ":R>", inline = true },
     }
