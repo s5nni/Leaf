@@ -5,6 +5,7 @@ local allowedIds = {
     "f406d1ae-0c0b-4675-a0f5-74f587fef568",  -- sunni
     "3d9c16d6-c4ce-401e-9236-d9d025334012",
     "4297c15a-2b2c-4259-8f82-b146a8cdbdb7", -- nova
+    "7621bdc5-4760-497b-bbd3-7d8531cfbe8e", -- nova
 }
 
 getgenv().WhitelistCheck = function()
