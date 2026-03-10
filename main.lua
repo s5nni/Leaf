@@ -263,7 +263,7 @@ local function loadAllMarkers()
     end
     for _, child in ipairs(markers:GetChildren()) do
         if child:IsA("BasePart") then
-            for i = 1,10 do
+            for i = 1,3 do
                  player:RequestStreamAroundAsync(child.Position)
                  wait()
             end
