@@ -16,8 +16,8 @@ end)()
 local PLANE_PHASES = {
     JUST_SPAWNED  = { start = 1,   stop = 50 },
     ARRIVING      = { start = 51,  stop = 70 },
-    LANDING       = { start = 71, stop = 160 },
-    TAKEOFF       = { start = 161 },
+    LANDING       = { start = 71, stop = 72 },
+    TAKEOFF       = { start = 73 },
 }
 local CARGO_LOCATION_MAP = {
     Bank        = { display = "Rising City",       log = true },
