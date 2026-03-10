@@ -1,19 +1,7 @@
--- =============================================
--- LEAF ROBLOX ROBBERY LOGGER – SIMPLE SERVERHOP + TIMER
--- Author: s5nni
--- Version: Loaded from version.lua
--- =============================================
-
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/webhook.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/whitelist.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/robberies.lua"))()
 local BOT_VERSION = loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/version.lua"))()
-
--- =============================================
--- CONFIGURATION SECTION – EDIT THESE VALUES
--- =============================================
-
--- Plane Waypoints (loaded externally)
 local PLANE_WAYPOINTS = (function()
     local success, result = pcall(function()
         return loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/PlaneWaypoints.lua"))()
@@ -25,16 +13,12 @@ local PLANE_WAYPOINTS = (function()
         return {}
     end
 end)()
-
--- Plane Phase Ranges (set these based on your waypoint indices!)
 local PLANE_PHASES = {
     JUST_SPAWNED  = { start = 1,   stop = 50 },
     ARRIVING      = { start = 51,  stop = 70 },
     LANDING       = { start = 71, stop = 160 },
     TAKEOFF       = { start = 161 },
 }
-
--- Train Location Mapper
 local CARGO_LOCATION_MAP = {
     Bank        = { display = "Rising City",       log = true },
     Bank2       = { display = "Just Started",      log = true },
@@ -62,16 +46,9 @@ local PASSENGER_LOCATION_MAP = {
     PowerPlant  = { display = "Crime Port Tunnel", log = true },
     Tomb        = { display = "Dunes",             log = true },
 }
-
 local DEFAULT_LOCATION = { display = nil, log = true }
-
 local DEFAULT_MIN_BOUNTY = 5000
-local MAX_PLAYERS = 5  -- server hop player limit
-
--- =============================================
--- CORE CONSTANTS & HELPERS
--- =============================================
-
+local MAX_PLAYERS = 5
 local AIRDROP_LOCATION_RADIUS = math.huge
 local AIRDROP_COLORS = {
     { r = 147, g = 44,  b = 53,  label = "🔴 Red",   embedColor = 15158332 },
@@ -80,7 +57,6 @@ local AIRDROP_COLORS = {
 }
 local CACTUS_VALLEY_CENTER = Vector3.new(945.572509765625, 32.46596145629883, -217.1789093017578)
 local DUNES_CENTER = Vector3.new(962.0200805664062, 44.48336410522461, -159.24659729003906)
-
 local LogLevel = {
     INFO    = { label = "ℹ️ Info",       color = 5793266  },
     SUCCESS = { label = "✅ Success",    color = 3066993  },
@@ -88,17 +64,11 @@ local LogLevel = {
     ERROR   = { label = "❌ Error",      color = 15158332 },
     HOP     = { label = "🔀 Server Hop", color = 10181046 },
 }
-
--- =============================================
--- FILE SYSTEM (visited servers)
--- =============================================
-
 local function getVisitedFilePath()
     local folder = "LeafBot_" .. game.PlaceId
     if not isfolder(folder) then makefolder(folder) end
     return folder .. "/visited_servers.json"
 end
-
 local function loadVisitedServers()
     local path = getVisitedFilePath()
     if isfile(path) then
@@ -109,7 +79,6 @@ local function loadVisitedServers()
     end
     return {}
 end
-
 local function saveVisitedServers(data)
     local path = getVisitedFilePath()
     local success, json = pcall(function()
@@ -117,7 +86,6 @@ local function saveVisitedServers(data)
     end)
     if success then writefile(path, json) end
 end
-
 local function cleanupOldServers()
     local visited = loadVisitedServers()
     local currentTime = os.time()
@@ -131,29 +99,17 @@ local function cleanupOldServers()
     if changed then saveVisitedServers(visited) end
     return visited
 end
-
 getgenv().VisitedServers = cleanupOldServers()
 if not getgenv().ServerRegionCache then getgenv().ServerRegionCache = {} end
-
--- =============================================
--- WHITELIST CHECK
--- =============================================
-
 if getgenv().WhitelistCheck and not getgenv().WhitelistCheck() then
     warn("Not whitelisted.")
     return
 end
-
--- =============================================
--- UTILITY FUNCTIONS
--- =============================================
-
 local function getJoinLink(jobId)
     local placeId = game.PlaceId
     local http = game:GetService("HttpService")
     return "https://s5nni.github.io/Leaf-Joiner/?placeId=" .. placeId .. "&jobId=" .. http:UrlEncode(jobId)
 end
-
 local function sendPrivateLog(level, title, description, fields)
     local webhook = "https://ptb.discord.com/api/webhooks/1479893109688107211/jaSR938vkn0zEcOLN0FmxI3YtiVRmcHTrIuIQzIC68Kpc4-DbvYaXGlNy7Ytn80-Drd_"
     if not webhook or webhook == "" then return end
@@ -185,7 +141,6 @@ local function sendPrivateLog(level, title, description, fields)
         request({ Url = webhook, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded })
     end)
 end
-
 local function sendLog(level, title, description, fields)
     local webhook = getgenv().WebhookConfig.Webhooks.Log
     if not webhook or webhook == "" then return end
@@ -217,7 +172,6 @@ local function sendLog(level, title, description, fields)
         request({ Url = webhook, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded })
     end)
 end
-
 local function waitForLoad()
     local Players = game:GetService("Players")
     local player = Players.LocalPlayer
@@ -232,9 +186,7 @@ local function waitForLoad()
     task.wait(2)
     return player
 end
-
 local function formatName(name) return name:gsub("_", " ") end
-
 local function getTeamCounts()
     local counts = { Criminal = 0, Police = 0, Prisoner = 0 }
     local localPlayer = game:GetService("Players").LocalPlayer
@@ -248,11 +200,6 @@ local function getTeamCounts()
     end
     return counts
 end
-
--- =============================================
--- AREA LOADING
--- =============================================
-
 local function loadAllMarkers()
     local player = game:GetService("Players").LocalPlayer
     if not player then return end
@@ -271,14 +218,9 @@ local function loadAllMarkers()
     end
     sendLog(LogLevel.INFO, "Area Load", "All marker streaming requested.")
 end
-
--- =============================================
--- AIRDROP DETECTION (unchanged)
--- =============================================
 local function colorDistance(r1,g1,b1,r2,g2,b2)
     return math.sqrt((r1-r2)^2 + (g1-g2)^2 + (b1-b2)^2)
 end
-
 local function matchAirdropColor(r,g,b)
     local best, bestDist = nil, math.huge
     for _, def in ipairs(AIRDROP_COLORS) do
@@ -291,7 +233,6 @@ local function matchAirdropColor(r,g,b)
     if bestDist <= 30 then return best end
     return nil
 end
-
 local function getDropPosition(drop)
     local ok, pivot = pcall(function() return drop:GetPivot() end)
     if ok and pivot then return pivot.Position end
@@ -301,7 +242,6 @@ local function getDropPosition(drop)
     if part then return part.Position end
     return nil
 end
-
 local function getNearestLocation(pos)
     if not pos then return "Unknown Location" end
     local distToCactus = (pos - CACTUS_VALLEY_CENTER).Magnitude
@@ -312,10 +252,6 @@ local function getNearestLocation(pos)
         return "Dunes"
     end
 end
-
--- =============================================
--- CROWN JEWEL HELPERS (unchanged)
--- =============================================
 local POSITION_THRESHOLD = 5
 local knownLocations = {
     {cframe = CFrame.new(-177.696777, 20.1733818, -4682.39795, 0.275480151, -0, -0.96130687, 0, 1, -0, 0.96130687, 0, 0.275480151), axis = "Z"},
@@ -324,7 +260,6 @@ local knownLocations = {
     {cframe = CFrame.new(205.143555, 20.1733818, -4240.87305, 0.961297989, 0, 0.275510818, 0, 1, 0, -0.275510818, 0, 0.961297989), axis = "Y"},
     {cframe = CFrame.new(381.288574, 20.1733818, -4885.12646, -0.275480509, 0, 0.96130687, 0, 1, 0, -0.96130687, 0, -0.275480509), axis = "Z"},
 }
-
 local function getAxisForHolder(holderModel)
     local pos = holderModel:GetPivot().Position
     for _, loc in ipairs(knownLocations) do
@@ -334,7 +269,6 @@ local function getAxisForHolder(holderModel)
     end
     return nil
 end
-
 local function getCrownJewelCode()
     local casino = workspace:FindFirstChild("Casino")
     if not casino then
@@ -386,7 +320,6 @@ local function getCrownJewelCode()
     for _, d in ipairs(digits) do code = code .. d.text end
     return code
 end
-
 local function parseTimerString(timerStr)
     if not timerStr then return nil end
     local minutes, seconds = timerStr:match("(%d+):(%d+)")
@@ -395,7 +328,6 @@ local function parseTimerString(timerStr)
     end
     return nil
 end
-
 local function getCrownJewelTimer()
     local casino = workspace:FindFirstChild("Casino")
     if not casino then return nil end
@@ -413,10 +345,6 @@ local function getCrownJewelTimer()
     end
     return nil
 end
-
--- =============================================
--- PLANE DETECTION (unchanged)
--- =============================================
 local function getPlanePart()
     local plane = workspace:FindFirstChild("Plane")
     if not plane then return nil end
@@ -458,10 +386,6 @@ local function getPlaneStatus()
         return nil
     end
 end
-
--- =============================================
--- TRAIN DETECTION (unchanged)
--- =============================================
 local function getClosestMarkerWithDistance(pos)
     local markers = workspace:FindFirstChild("RobberyMarkers")
     if not markers then return "Unknown", math.huge end
@@ -496,10 +420,6 @@ local function getTrainPosition(storeName)
     end
     return nil
 end
-
--- =============================================
--- OIL RIG TIMER & STATUS (unchanged)
--- =============================================
 local function getOilRigTimer()
     local oilRig = workspace:FindFirstChild("OilRig")
     if not oilRig then return nil end
@@ -549,10 +469,6 @@ local function getOilRigStatus()
     end
     return nil
 end
-
--- =============================================
--- MANSION TIME HELPERS (unchanged)
--- =============================================
 local function getGameTimeText()
     local s, lbl = pcall(function()
         return game:GetService("Players").LocalPlayer.PlayerGui.AppUI.Buttons.Minimap.Time.Time
@@ -588,10 +504,6 @@ local function getMansionStatus()
     end
     return status, display, timeText
 end
-
--- =============================================
--- BOUNTY DETECTION (unchanged)
--- =============================================
 local function checkBounties(jobId, loggedSpecials)
     if loggedSpecials.Bounty then return loggedSpecials end
     if getgenv().RobberyToggles and not getgenv().RobberyToggles.Bounty then return loggedSpecials end
@@ -696,10 +608,6 @@ local function checkBounties(jobId, loggedSpecials)
     end
     return loggedSpecials
 end
-
--- =============================================
--- EMBED FUNCTIONS (unchanged)
--- =============================================
 local function buildBaseEmbed(storeName, statusText, isOpen, jobId, extraFields, colorOverride, imageOverride)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
@@ -1020,10 +928,6 @@ local function sendBountyEmbed(webhookUrl, bountyPlayers, jobId)
     local ok, enc = pcall(function() return game:GetService("HttpService"):JSONEncode(payload) end)
     if ok then pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = enc }) end) end
 end
-
--- =============================================
--- SCAN FUNCTIONS (unchanged, returns hasUnderRobbery)
--- =============================================
 local function checkAirdrops(jobId, loggedDrops)
     local webhook = getgenv().WebhookConfig.Webhooks.Airdrop
     if not webhook or webhook == "" then
@@ -1222,14 +1126,11 @@ local function scanStores(player, jobId, loggedStores)
                         end
 
                     elseif storeName == "Oil_Rig" then
-                        -- handled in special robberies
-
+                        -- hi
                     elseif storeName == "Cargo_Plane" then
-                        -- handled in special robberies
-
+                        -- i hate you
                     elseif storeName == "Bounty" then
-                        -- handled in special robberies
-
+                        -- hi
                     else
                         if loggedStores[storeName] then break end
                         if isOpen then
@@ -1308,7 +1209,6 @@ local function checkSpecialRobberies(jobId, loggedSpecials)
             sendLog(LogLevel.SUCCESS, "Plane Logged", "Cargo plane status: " .. planeStatus)
         end
     end
-    -- Oil Rig
     if not logged.OilRig then
         local status = getOilRigStatus()
         if status == "open" or status == "robbery" then
@@ -1335,7 +1235,6 @@ local function checkSpecialRobberies(jobId, loggedSpecials)
             end
         end
     end
-    -- Bounty
     logged = checkBounties(jobId, logged)
     if logged.BountyData then
         local webhook = getgenv().WebhookConfig.Webhooks["Bounty"]
@@ -1346,11 +1245,6 @@ local function checkSpecialRobberies(jobId, loggedSpecials)
     end
     return logged
 end
-
--- =============================================
--- SIMPLE SERVER HOP (OLD RELIABLE)
--- =============================================
-
 local function getServerIP(placeId, serverId)
     local ok, resp = pcall(function()
         return request({
@@ -1507,9 +1401,8 @@ local function hopToNewServer(player)
             getgenv().TeleportInProgress = false
             pcall(function() tp:Teleport(placeId, player) end)
         else
-            -- Teleport call succeeded; the event will handle any later failure
             task.wait(1)
-            failConnection:Disconnect() -- disconnect after a short time to avoid memory leaks
+            failConnection:Disconnect()
         end
     else
         sendLog(LogLevel.WARNING, "No Target Server", "Random teleport.")
@@ -1521,11 +1414,6 @@ end
 if not getgenv()._ServerHopSource then
     getgenv()._ServerHopSource = [[loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/main.lua"))()]]
 end
-
--- =============================================
--- MAIN EXECUTION (with session timer)
--- =============================================
-
 pcall(function()
     local player = waitForLoad()
     local jobId = game.JobId
