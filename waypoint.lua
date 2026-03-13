@@ -681,4 +681,4 @@ local CargoPlane = {
     { seq = 229, time = 230, cframe = CFrame.new(-2311.344971, 1033.206299, -7866.071289, 1.000000, 0.000000, 0.000000, 0.000000, 1.000000, 0.000000, 0.000000, 0.000000, 1.000000) }, -- WP229_230
 }
 
-return CargoTrain, PassengerTrain, CargoPlane
+return { CargoTrain = CargoTrain, PassengerTrain = PassengerTrain, CargoPlane = CargoPlane }
