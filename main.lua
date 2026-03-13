@@ -31,8 +31,8 @@ local PLANE_WAYPOINTS = WAYPOINTS.CargoPlane or {}
 -- Limit waypoints after which the robbery is considered expired
 local LIMITS = {
     CargoPlane = 65,
-    CargoTrain = 205,
-    PassengerTrain = 205,
+    CargoTrain = 220,
+    PassengerTrain = 215,
 }
 
 -- =============================================
