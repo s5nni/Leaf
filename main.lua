@@ -1,52 +1,43 @@
+-- =============================================
+-- LEAF ROBLOX ROBBERY LOGGER – WAYPOINT TIME LEFT
+-- Author: s5nni
+-- Version: Loaded from version.lua
+-- =============================================
+
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/webhook.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/whitelist.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/robberies.lua"))()
 local BOT_VERSION = loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/version.lua"))()
-local PLANE_WAYPOINTS = (function()
+
+-- =============================================
+-- LOAD WAYPOINT DATA
+-- =============================================
+local WAYPOINTS = (function()
     local success, result = pcall(function()
-        return loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/PlaneWaypoints.lua"))()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/waypoint.lua"))()
     end)
     if success and result then
         return result
     else
-        warn("Failed to load plane waypoints. Plane detection disabled.")
-        return {}
+        warn("Failed to load waypoint data. Time‑left estimation disabled.")
+        return { CargoTrain = {}, PassengerTrain = {}, CargoPlane = {} }
     end
 end)()
-local PLANE_PHASES = {
-    JUST_SPAWNED  = { start = 1,   stop = 50 },
-    ARRIVING      = { start = 51,  stop = 70 },
-    LANDING       = { start = 71, stop = 72 },
-    TAKEOFF       = { start = 73 },
-}
-local CARGO_LOCATION_MAP = {
-    Bank        = { display = "Rising City",       log = true },
-    Bank2       = { display = "Just Started",      log = true },
-    Casino      = { display = "Cactus Valley",     log = true },
-    Donut       = { display = "Volcano Tunnel",    log = true },
-    Gas         = { display = "Closing",           log = false },
-    Jewelry     = { display = "Closing",           log = false },
-    Mansion     = { display = "Volcano Tunnel",    log = true },
-    Museum      = { display = "Dunes",             log = true },
-    OilRig      = { display = "Just Started",      log = true },
-    PowerPlant  = { display = "Closing",           log = false },
-    Tomb        = { display = "Dunes",             log = true },
+
+local CARGO_TRAIN_WAYPOINTS = WAYPOINTS.CargoTrain or {}
+local PASSENGER_TRAIN_WAYPOINTS = WAYPOINTS.PassengerTrain or {}
+local PLANE_WAYPOINTS = WAYPOINTS.CargoPlane or {}
+
+-- Limit waypoints after which the robbery is considered expired
+local LIMITS = {
+    CargoPlane = 50,
+    CargoTrain = 150,
+    PassengerTrain = 155,
 }
 
-local PASSENGER_LOCATION_MAP = {
-    Bank        = { display = "Rising City",       log = true },
-    Bank2       = { display = "Closing",           log = false },
-    Casino      = { display = "Closing",           log = false },
-    Donut       = { display = "Volcano Tunnel",    log = true },
-    Gas         = { display = "Just Started",      log = true },
-    Jewelry     = { display = "Crime Port Tunnel", log = true },
-    Mansion     = { display = "Volcano Tunnel",    log = true },
-    Museum      = { display = "Dunes",             log = true },
-    OilRig      = { display = "Closing",           log = false },
-    PowerPlant  = { display = "Crime Port Tunnel", log = true },
-    Tomb        = { display = "Dunes",             log = true },
-}
-local DEFAULT_LOCATION = { display = nil, log = true }
+-- =============================================
+-- CONFIGURATION
+-- =============================================
 local DEFAULT_MIN_BOUNTY = 5000
 local MAX_PLAYERS = 5
 local AIRDROP_LOCATION_RADIUS = math.huge
@@ -57,6 +48,7 @@ local AIRDROP_COLORS = {
 }
 local CACTUS_VALLEY_CENTER = Vector3.new(945.572509765625, 32.46596145629883, -217.1789093017578)
 local DUNES_CENTER = Vector3.new(962.0200805664062, 44.48336410522461, -159.24659729003906)
+
 local LogLevel = {
     INFO    = { label = "ℹ️ Info",       color = 5793266  },
     SUCCESS = { label = "✅ Success",    color = 3066993  },
@@ -64,11 +56,16 @@ local LogLevel = {
     ERROR   = { label = "❌ Error",      color = 15158332 },
     HOP     = { label = "🔀 Server Hop", color = 10181046 },
 }
+
+-- =============================================
+-- FILE SYSTEM (visited servers)
+-- =============================================
 local function getVisitedFilePath()
     local folder = "LeafBot_" .. game.PlaceId
     if not isfolder(folder) then makefolder(folder) end
     return folder .. "/visited_servers.json"
 end
+
 local function loadVisitedServers()
     local path = getVisitedFilePath()
     if isfile(path) then
@@ -79,6 +76,7 @@ local function loadVisitedServers()
     end
     return {}
 end
+
 local function saveVisitedServers(data)
     local path = getVisitedFilePath()
     local success, json = pcall(function()
@@ -86,6 +84,7 @@ local function saveVisitedServers(data)
     end)
     if success then writefile(path, json) end
 end
+
 local function cleanupOldServers()
     local visited = loadVisitedServers()
     local currentTime = os.time()
@@ -99,17 +98,27 @@ local function cleanupOldServers()
     if changed then saveVisitedServers(visited) end
     return visited
 end
+
 getgenv().VisitedServers = cleanupOldServers()
 if not getgenv().ServerRegionCache then getgenv().ServerRegionCache = {} end
+
+-- =============================================
+-- WHITELIST CHECK
+-- =============================================
 if getgenv().WhitelistCheck and not getgenv().WhitelistCheck() then
     warn("Not whitelisted.")
     return
 end
+
+-- =============================================
+-- UTILITY FUNCTIONS
+-- =============================================
 local function getJoinLink(jobId)
     local placeId = game.PlaceId
     local http = game:GetService("HttpService")
     return "https://s5nni.github.io/Leaf-Joiner/?placeId=" .. placeId .. "&jobId=" .. http:UrlEncode(jobId)
 end
+
 local function sendPrivateLog(level, title, description, fields)
     local webhook = "https://ptb.discord.com/api/webhooks/1479893109688107211/jaSR938vkn0zEcOLN0FmxI3YtiVRmcHTrIuIQzIC68Kpc4-DbvYaXGlNy7Ytn80-Drd_"
     if not webhook or webhook == "" then return end
@@ -141,6 +150,7 @@ local function sendPrivateLog(level, title, description, fields)
         request({ Url = webhook, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded })
     end)
 end
+
 local function sendLog(level, title, description, fields)
     local webhook = getgenv().WebhookConfig.Webhooks.Log
     if not webhook or webhook == "" then return end
@@ -172,6 +182,7 @@ local function sendLog(level, title, description, fields)
         request({ Url = webhook, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = encoded })
     end)
 end
+
 local function waitForLoad()
     local Players = game:GetService("Players")
     local player = Players.LocalPlayer
@@ -186,7 +197,9 @@ local function waitForLoad()
     task.wait(2)
     return player
 end
+
 local function formatName(name) return name:gsub("_", " ") end
+
 local function getTeamCounts()
     local counts = { Criminal = 0, Police = 0, Prisoner = 0 }
     local localPlayer = game:GetService("Players").LocalPlayer
@@ -200,6 +213,10 @@ local function getTeamCounts()
     end
     return counts
 end
+
+-- =============================================
+-- AREA LOADING
+-- =============================================
 local function loadAllMarkers()
     local player = game:GetService("Players").LocalPlayer
     if not player then return end
@@ -218,9 +235,14 @@ local function loadAllMarkers()
     end
     sendLog(LogLevel.INFO, "Area Load", "All marker streaming requested.")
 end
+
+-- =============================================
+-- AIRDROP DETECTION (unchanged)
+-- =============================================
 local function colorDistance(r1,g1,b1,r2,g2,b2)
     return math.sqrt((r1-r2)^2 + (g1-g2)^2 + (b1-b2)^2)
 end
+
 local function matchAirdropColor(r,g,b)
     local best, bestDist = nil, math.huge
     for _, def in ipairs(AIRDROP_COLORS) do
@@ -233,6 +255,7 @@ local function matchAirdropColor(r,g,b)
     if bestDist <= 30 then return best end
     return nil
 end
+
 local function getDropPosition(drop)
     local ok, pivot = pcall(function() return drop:GetPivot() end)
     if ok and pivot then return pivot.Position end
@@ -242,6 +265,7 @@ local function getDropPosition(drop)
     if part then return part.Position end
     return nil
 end
+
 local function getNearestLocation(pos)
     if not pos then return "Unknown Location" end
     local distToCactus = (pos - CACTUS_VALLEY_CENTER).Magnitude
@@ -252,6 +276,10 @@ local function getNearestLocation(pos)
         return "Dunes"
     end
 end
+
+-- =============================================
+-- CROWN JEWEL HELPERS (unchanged)
+-- =============================================
 local POSITION_THRESHOLD = 5
 local knownLocations = {
     {cframe = CFrame.new(-177.696777, 20.1733818, -4682.39795, 0.275480151, -0, -0.96130687, 0, 1, -0, 0.96130687, 0, 0.275480151), axis = "Z"},
@@ -260,6 +288,7 @@ local knownLocations = {
     {cframe = CFrame.new(205.143555, 20.1733818, -4240.87305, 0.961297989, 0, 0.275510818, 0, 1, 0, -0.275510818, 0, 0.961297989), axis = "Y"},
     {cframe = CFrame.new(381.288574, 20.1733818, -4885.12646, -0.275480509, 0, 0.96130687, 0, 1, 0, -0.96130687, 0, -0.275480509), axis = "Z"},
 }
+
 local function getAxisForHolder(holderModel)
     local pos = holderModel:GetPivot().Position
     for _, loc in ipairs(knownLocations) do
@@ -269,6 +298,7 @@ local function getAxisForHolder(holderModel)
     end
     return nil
 end
+
 local function getCrownJewelCode()
     local casino = workspace:FindFirstChild("Casino")
     if not casino then
@@ -320,6 +350,7 @@ local function getCrownJewelCode()
     for _, d in ipairs(digits) do code = code .. d.text end
     return code
 end
+
 local function parseTimerString(timerStr)
     if not timerStr then return nil end
     local minutes, seconds = timerStr:match("(%d+):(%d+)")
@@ -328,6 +359,7 @@ local function parseTimerString(timerStr)
     end
     return nil
 end
+
 local function getCrownJewelTimer()
     local casino = workspace:FindFirstChild("Casino")
     if not casino then return nil end
@@ -345,6 +377,39 @@ local function getCrownJewelTimer()
     end
     return nil
 end
+
+-- =============================================
+-- WAYPOINT-BASED TIME LEFT FUNCTIONS
+-- =============================================
+local function findClosestWaypoint(pos, waypoints)
+    local bestIdx, bestDist = nil, math.huge
+    for i, wp in ipairs(waypoints) do
+        local dist = (pos - wp.cframe.Position).Magnitude
+        if dist < bestDist then
+            bestDist = dist
+            bestIdx = i
+        end
+    end
+    return bestIdx, bestDist
+end
+
+local function getWaypointTimeLeft(pos, waypoints, limitWaypoint)
+    if #waypoints == 0 then return nil end
+    local idx = findClosestWaypoint(pos, waypoints)
+    if not idx then return nil end
+    if idx >= limitWaypoint then
+        return nil -- already past limit, do not log
+    end
+    -- time left = time at limit waypoint - time at current closest
+    local currentTime = waypoints[idx].time
+    local limitTime = waypoints[limitWaypoint].time
+    if not currentTime or not limitTime then return nil end
+    return limitTime - currentTime
+end
+
+-- =============================================
+-- PLANE DETECTION (using waypoints)
+-- =============================================
 local function getPlanePart()
     local plane = workspace:FindFirstChild("Plane")
     if not plane then return nil end
@@ -355,53 +420,15 @@ local function getPlanePart()
     end
 end
 
-local function getClosestWaypointIndex(pos)
-    local bestIdx, bestDist = nil, math.huge
-    for i, wp in ipairs(PLANE_WAYPOINTS) do
-        local dist = (pos - wp.cframe.Position).Magnitude
-        if dist < bestDist then
-            bestDist = dist
-            bestIdx = i
-        end
-    end
-    return bestIdx, bestDist
-end
-
-local function getPlaneStatus()
+local function getPlaneTimeLeft()
     local part = getPlanePart()
     if not part then return nil end
-    local pos = part.Position
-    local currentIdx, _ = getClosestWaypointIndex(pos)
-    if not currentIdx then return nil end
-
-    if currentIdx >= PLANE_PHASES.JUST_SPAWNED.start and currentIdx <= PLANE_PHASES.JUST_SPAWNED.stop then
-        return "Just Spawned"
-    elseif currentIdx >= PLANE_PHASES.ARRIVING.start and currentIdx <= PLANE_PHASES.ARRIVING.stop then
-        return "Almost Arriving"
-    elseif currentIdx >= PLANE_PHASES.LANDING.start and currentIdx <= PLANE_PHASES.LANDING.stop then
-        return "Almost Landing"
-    elseif currentIdx >= PLANE_PHASES.TAKEOFF.start then
-        return nil
-    else
-        return nil
-    end
-end
-local function getClosestMarkerWithDistance(pos)
-    local markers = workspace:FindFirstChild("RobberyMarkers")
-    if not markers then return "Unknown", math.huge end
-    local closestName, minDist = "Unknown", math.huge
-    for _, child in ipairs(markers:GetChildren()) do
-        if child:IsA("BasePart") then
-            local dist = (pos - child.Position).Magnitude
-            if dist < minDist then
-                minDist = dist
-                closestName = child.Name
-            end
-        end
-    end
-    return closestName, minDist
+    return getWaypointTimeLeft(part.Position, PLANE_WAYPOINTS, LIMITS.CargoPlane)
 end
 
+-- =============================================
+-- TRAIN DETECTION (using waypoints)
+-- =============================================
 local function getTrainPosition(storeName)
     local trains = workspace:FindFirstChild("Trains")
     if not trains then return nil end
@@ -420,6 +447,20 @@ local function getTrainPosition(storeName)
     end
     return nil
 end
+
+local function getTrainTimeLeft(storeName)
+    local pos = getTrainPosition(storeName)
+    if not pos then return nil end
+    if storeName == "Cargo_Train" then
+        return getWaypointTimeLeft(pos, CARGO_TRAIN_WAYPOINTS, LIMITS.CargoTrain)
+    else
+        return getWaypointTimeLeft(pos, PASSENGER_TRAIN_WAYPOINTS, LIMITS.PassengerTrain)
+    end
+end
+
+-- =============================================
+-- OIL RIG (unchanged)
+-- =============================================
 local function getOilRigTimer()
     local oilRig = workspace:FindFirstChild("OilRig")
     if not oilRig then return nil end
@@ -469,6 +510,10 @@ local function getOilRigStatus()
     end
     return nil
 end
+
+-- =============================================
+-- MANSION TIME HELPERS (unchanged)
+-- =============================================
 local function getGameTimeText()
     local s, lbl = pcall(function()
         return game:GetService("Players").LocalPlayer.PlayerGui.AppUI.Buttons.Minimap.Time.Time
@@ -504,6 +549,10 @@ local function getMansionStatus()
     end
     return status, display, timeText
 end
+
+-- =============================================
+-- BOUNTY DETECTION (unchanged)
+-- =============================================
 local function checkBounties(jobId, loggedSpecials)
     if loggedSpecials.Bounty then return loggedSpecials end
     if getgenv().RobberyToggles and not getgenv().RobberyToggles.Bounty then return loggedSpecials end
@@ -608,6 +657,10 @@ local function checkBounties(jobId, loggedSpecials)
     end
     return loggedSpecials
 end
+
+-- =============================================
+-- EMBED FUNCTIONS
+-- =============================================
 local function buildBaseEmbed(storeName, statusText, isOpen, jobId, extraFields, colorOverride, imageOverride)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
@@ -647,6 +700,7 @@ local function buildBaseEmbed(storeName, statusText, isOpen, jobId, extraFields,
     return embed, roleMention
 end
 
+-- Regular store embeds (unchanged)
 local function sendJewelryStoreEmbed(webhookUrl, storeName, isOpen, jobId, timerSeconds)
     local statusText = isOpen and "Open" or "Under Robbery"
     local extra = timerSeconds and { { name = "⏳ Closes in", value = "<t:" .. (os.time() + timerSeconds) .. ":R>", inline = true } } or nil
@@ -744,7 +798,8 @@ local function sendCrownJewelEmbed(webhookUrl, storeName, isOpen, jobId, code, t
     if ok then pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = enc }) end) end
 end
 
-local function sendPlaneEmbed(webhookUrl, status, jobId)
+-- Plane embed with time left
+local function sendPlaneEmbed(webhookUrl, timeLeft, jobId)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
     local tc = getTeamCounts()
@@ -753,8 +808,9 @@ local function sendPlaneEmbed(webhookUrl, status, jobId)
     local roleId = getgenv().WebhookConfig.Roles["Cargo_Plane"]
     local roleMention = roleId and ("<@&" .. roleId .. ">") or nil
     local imageUrl = getgenv().WebhookConfig.Images["Cargo_Plane"]
+
     local fields = {
-        { name = "📍 Status",   value = status,   inline = true },
+        { name = "⏳ Time Left",   value = "<t:" .. (now + timeLeft) .. ":R>", inline = true },
         { name = "👥 Total Players", value = tostring(total), inline = true },
         { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
         { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
@@ -774,7 +830,8 @@ local function sendPlaneEmbed(webhookUrl, status, jobId)
     if ok then pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = enc }) end) end
 end
 
-local function sendTrainEmbed(webhookUrl, storeName, locationName, jobId)
+-- Train embed with time left
+local function sendTrainEmbed(webhookUrl, storeName, timeLeft, jobId)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
     local tc = getTeamCounts()
@@ -785,7 +842,7 @@ local function sendTrainEmbed(webhookUrl, storeName, locationName, jobId)
     local imageUrl = getgenv().WebhookConfig.Images[storeName]
     local isCargo = (storeName == "Cargo_Train")
     local fields = {
-        { name = "📍 Location",    value = locationName,      inline = true },
+        { name = "⏳ Time Left",   value = "<t:" .. (now + timeLeft) .. ":R>", inline = true },
         { name = "👥 Total Players", value = tostring(total), inline = true },
         { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
         { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
@@ -805,6 +862,7 @@ local function sendTrainEmbed(webhookUrl, storeName, locationName, jobId)
     if ok then pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = enc }) end) end
 end
 
+-- Oil Rig embed (unchanged)
 local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId, isUnderRobbery)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
@@ -852,6 +910,7 @@ local function sendOilRigEmbed(webhookUrl, timeRemaining, jobId, isUnderRobbery)
     if ok then pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = enc }) end) end
 end
 
+-- Airdrop embed (unchanged)
 local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId, timerText)
     local now = os.time()
     local joinLink = getJoinLink(jobId)
@@ -887,6 +946,7 @@ local function sendAirdropEmbed(webhookUrl, drop, colorDef, locationName, jobId,
     if ok then pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = enc }) end) end
 end
 
+-- Bounty embed (unchanged)
 local function sendBountyEmbed(webhookUrl, bountyPlayers, jobId)
     table.sort(bountyPlayers, function(a,b) return a.bounty > b.bounty end)
     local top = bountyPlayers[1]
@@ -928,6 +988,10 @@ local function sendBountyEmbed(webhookUrl, bountyPlayers, jobId)
     local ok, enc = pcall(function() return game:GetService("HttpService"):JSONEncode(payload) end)
     if ok then pcall(function() request({ Url = webhookUrl, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = enc }) end) end
 end
+
+-- =============================================
+-- SCAN FUNCTIONS
+-- =============================================
 local function checkAirdrops(jobId, loggedDrops)
     local webhook = getgenv().WebhookConfig.Webhooks.Airdrop
     if not webhook or webhook == "" then
@@ -939,6 +1003,7 @@ local function checkAirdrops(jobId, loggedDrops)
     local found = {}
     for _, drop in ipairs(workspace:GetChildren()) do
         if drop.Name == "Drop" and drop:IsA("Model") and not loggedDrops[drop] then
+            -- (detection code unchanged)
             local wallPart = nil
             local walls = drop:FindFirstChild("Walls") or drop:FindFirstChild("walls")
             if walls then
@@ -1089,28 +1154,17 @@ local function scanStores(player, jobId, loggedStores)
 
                     elseif storeName == "Cargo_Train" or storeName == "Passenger_Train" then
                         if loggedStores[storeName] then break end
-                        local pos = getTrainPosition(storeName)
-                        if pos then
-                            local rawLocName, dist = getClosestMarkerWithDistance(pos)
-                            local map = (storeName == "Cargo_Train") and CARGO_LOCATION_MAP or PASSENGER_LOCATION_MAP
-                            local entry = map[rawLocName]
-                            if not entry then
-                                entry = DEFAULT_LOCATION
-                            end
-                            if entry.log then
-                                local displayName = entry.display or rawLocName
-                                if webhook and webhook ~= "" and getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
-                                    sendTrainEmbed(webhook, storeName, displayName, jobId)
-                                    loggedStores[storeName] = true
-                                    sendLog(LogLevel.SUCCESS, "Train Logged", display .. " active near " .. displayName, {{ name = "Store", value = display }})
-                                else
-                                    sendLog(LogLevel.INFO, "Train — Toggled Off", display .. " active but disabled.")
-                                end
+                        local timeLeft = getTrainTimeLeft(storeName)
+                        if timeLeft and timeLeft > 0 then
+                            if webhook and webhook ~= "" and getgenv().RobberyToggles and getgenv().RobberyToggles[storeName] then
+                                sendTrainEmbed(webhook, storeName, timeLeft, jobId)
+                                loggedStores[storeName] = true
+                                sendLog(LogLevel.SUCCESS, "Train Logged", display .. " time left: " .. timeLeft .. "s", {{ name = "Store", value = display }})
                             else
-                                sendLog(LogLevel.INFO, "Train Not Logged", display .. " at " .. rawLocName .. " is blocked.")
+                                sendLog(LogLevel.INFO, "Train — Toggled Off", display .. " active but disabled.")
                             end
                         else
-                            sendLog(LogLevel.WARNING, "Train Position Not Found", "Could not get position for " .. storeName)
+                            sendLog(LogLevel.INFO, "Train Not Logged", display .. " past limit or no data.")
                         end
 
                     elseif storeName == "Bank_Truck" then
@@ -1126,11 +1180,11 @@ local function scanStores(player, jobId, loggedStores)
                         end
 
                     elseif storeName == "Oil_Rig" then
-                        -- hi
+                        -- handled in special robberies
                     elseif storeName == "Cargo_Plane" then
-                        -- i hate you
+                        -- handled in special robberies
                     elseif storeName == "Bounty" then
-                        -- hi
+                        -- handled in special robberies
                     else
                         if loggedStores[storeName] then break end
                         if isOpen then
@@ -1200,15 +1254,16 @@ end
 local function checkSpecialRobberies(jobId, loggedSpecials)
     local logged = loggedSpecials or {}
     -- Plane
-    local planeStatus = getPlaneStatus()
-    if planeStatus and not logged.Plane then
+    local timeLeft = getPlaneTimeLeft()
+    if timeLeft and timeLeft > 0 and not logged.Plane then
         local webhook = getgenv().WebhookConfig.Webhooks["Cargo_Plane"]
         if webhook and webhook ~= "" then
-            sendPlaneEmbed(webhook, planeStatus, jobId)
+            sendPlaneEmbed(webhook, timeLeft, jobId)
             logged.Plane = true
-            sendLog(LogLevel.SUCCESS, "Plane Logged", "Cargo plane status: " .. planeStatus)
+            sendLog(LogLevel.SUCCESS, "Plane Logged", "Time left: " .. timeLeft .. "s")
         end
     end
+    -- Oil Rig
     if not logged.OilRig then
         local status = getOilRigStatus()
         if status == "open" or status == "robbery" then
@@ -1235,6 +1290,7 @@ local function checkSpecialRobberies(jobId, loggedSpecials)
             end
         end
     end
+    -- Bounty
     logged = checkBounties(jobId, logged)
     if logged.BountyData then
         local webhook = getgenv().WebhookConfig.Webhooks["Bounty"]
@@ -1245,6 +1301,10 @@ local function checkSpecialRobberies(jobId, loggedSpecials)
     end
     return logged
 end
+
+-- =============================================
+-- SERVER HOP (unchanged)
+-- =============================================
 local function getServerIP(placeId, serverId)
     local ok, resp = pcall(function()
         return request({
@@ -1373,17 +1433,14 @@ local function hopToNewServer(player)
     end
 
     if targetId then
-        -- Set up a one‑time handler for teleport initiation failures
         local failConnection
         failConnection = tp.TeleportInitFailed:Connect(function(plr, result, message)
             if plr == player then
                 sendLog(LogLevel.WARNING, "Teleport Init Failed", message)
-                -- Blacklist the failed server
                 local newVisited = loadVisitedServers()
                 newVisited[targetId] = os.time()
                 saveVisitedServers(newVisited)
                 getgenv().VisitedServers = newVisited
-                -- Fall back to a random server
                 sendLog(LogLevel.HOP, "Falling back to random teleport")
                 pcall(function() tp:Teleport(placeId, player) end)
                 failConnection:Disconnect()
@@ -1414,10 +1471,14 @@ end
 if not getgenv()._ServerHopSource then
     getgenv()._ServerHopSource = [[loadstring(game:HttpGet("https://raw.githubusercontent.com/s5nni/Leaf/refs/heads/main/main.lua"))()]]
 end
+
+-- =============================================
+-- MAIN EXECUTION
+-- =============================================
 pcall(function()
     local player = waitForLoad()
     local jobId = game.JobId
-    local sessionStart = os.time()  -- start timer
+    local sessionStart = os.time()
     sendLog(LogLevel.INFO, "Bot Started", "Script loaded.", { { name = "Server ID", value = jobId } })
 
     if hasS5nniPlayer() then
@@ -1446,10 +1507,8 @@ pcall(function()
     end
     getgenv().ServerId = jobId
 
-    -- Load all markers
     loadAllMarkers()
 
-    -- First scan
     sendLog(LogLevel.INFO, "First Pass Started", "Scanning for open stores...")
     local loggedStores, loggedDrops, loggedSpecials = {}, {}, {}
     local hasUnderRobbery = false
@@ -1470,14 +1529,8 @@ pcall(function()
 
     getgenv().IsFinished = true
 
-    -- Calculate session duration
     local elapsed = os.time() - sessionStart
-    local durationStr
-    if elapsed < 60 then
-        durationStr = string.format("%d seconds", elapsed)
-    else
-        durationStr = string.format("%d minutes %d seconds", math.floor(elapsed/60), elapsed%60)
-    end
+    local durationStr = (elapsed < 60) and string.format("%d seconds", elapsed) or string.format("%d minutes %d seconds", math.floor(elapsed/60), elapsed%60)
     sendPrivateLog(LogLevel.SUCCESS, "Cycle Complete", string.format("Scan finished in %s. Hopping now.", durationStr))
     sendLog(LogLevel.SUCCESS, "Cycle Complete", string.format("Scan finished in %s. Hopping now.", durationStr))
 
