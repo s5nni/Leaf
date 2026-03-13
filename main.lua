@@ -30,7 +30,7 @@ local PLANE_WAYPOINTS = WAYPOINTS.CargoPlane or {}
 
 -- Limit waypoints after which the robbery is considered expired
 local LIMITS = {
-    CargoPlane = 55,
+    CargoPlane = 65,
     CargoTrain = 205,
     PassengerTrain = 205,
 }
@@ -810,7 +810,7 @@ local function sendPlaneEmbed(webhookUrl, timeLeft, jobId)
     local imageUrl = getgenv().WebhookConfig.Images["Cargo_Plane"]
 
     local fields = {
-        { name = "⏳ Time Left",   value = "<t:" .. (now + timeLeft) .. ":R>", inline = true },
+        { name = "⏳ Takeoff In",   value = "<t:" .. (now + (timeLeft+30)) .. ":R>", inline = true },
         { name = "👥 Total Players", value = tostring(total), inline = true },
         { name = "🔗 Join Server",  value = "[Click to Join](" .. joinLink .. ")", inline = false },
         { name = "🏃 Criminals",    value = tostring(crimAndPris), inline = true },
